@@ -3,7 +3,8 @@
 A private, data-driven personal operating system for one person.
 
 COMMAND is not a productivity app, a fitness tracker, a CRM or a budget tool. It
-is the system that connects them, built around one loop:
+is the system that connects them — 46 screens over one relational model, built
+around a single loop:
 
 ```
 GOAL → PLAN → TARGET → EXECUTE → MEASURE → ANALYZE → ADJUST → IMPROVE
@@ -122,7 +123,10 @@ fails because there is no request context (scripts, tests).
 SQLite via `better-sqlite3`, with the schema in `src/lib/db/schema.sql` as the
 single source of truth. It is compiled into a TypeScript constant by
 `scripts/gen-schema.mjs` (run automatically before dev, build, test and seed) so
-the runtime never depends on filesystem layout.
+the runtime never depends on filesystem layout. `CREATE TABLE IF NOT EXISTS`
+handles new tables; columns added to existing tables are listed in
+`src/lib/db/migrations.ts` and applied additively on every connection, so a
+database with real data in it picks up schema changes without losing anything.
 
 Fifty-six tables with real foreign keys and `CHECK` constraints — RPE is bounded
 1–10 in the database, not just the form; pillar weights must total 100; a
@@ -149,10 +153,31 @@ may be ACTIVE. Lead stage movements are written to an append-only
 | Cash forecast | `domain/forecast.ts` | 7/30/90-day projection from scheduled items; monthly items clamp to the last day of short months. |
 | Pipeline | `domain/pipeline.ts` | Conversion from recorded stage history, bottleneck detection, and backward planning from a revenue target through the real funnel. |
 | Impulse firewall | `domain/firewall.ts` | Green / yellow (24h) / red (72h). Borrowing, irreversibility, high emotional intensity, large spend and business pivots escalate. The cooling period cannot be skipped from the interface or the action. |
+| Strategist | `services/strategist.ts` | Aggregates every engine into a ranked briefing across five roles — analyst, reviewer, strategist, planner, accountability. |
 | Nutrition trend | `domain/nutrition.ts` | Compares logged intake against the actual bodyweight slope and reports whether the two agree. |
 | Readiness | `domain/recovery.ts` | Composite of sleep, energy, stress, soreness, recent session RPE and consecutive training days. Requires at least two inputs. |
 | Training load | `domain/load.ts` | Acute versus chronic workload, with a baseline-building state until 14 days exist. |
 | Idea vault | `domain/ideas.ts` | Weighted score with difficulty and cost inverted; activation gated on research, validation and a complete score. |
+
+---
+
+## The Strategist
+
+`/strategist` is the strategic layer the spec calls for, and it is deliberately
+**not** a language model. It runs the same engines that produce the scores and
+turns their output into a ranked briefing across five roles — analyst, reviewer,
+strategist, planner, accountability — with the figures stated inline:
+
+> **CUSTOMER → RETAINED is the bottleneck** — 0 of 5 leads that reached CUSTOMER
+> moved on, 0%. Improving that one step moves more revenue than adding leads at
+> the top of the funnel.
+
+> **Learning is being consumed, not applied** — 5 of 13 items over 30 days were
+> applied, 38%. Hours only compound once something changed because of them.
+
+Being rule-based is the point. There is no model generating this text, so there
+is nowhere for an invented number to come from. Where the data is too thin to
+conclude anything, the page says so and stays short.
 
 ---
 
@@ -171,6 +196,8 @@ Nothing here is a standalone dashboard. A single write propagates:
   day's overall performance.
 - **Changing the season's pillar weights** changes what the overall score
   measures from that day forward.
+- **Delegating a task** keeps the outcome linked to its goal and mission while
+  removing it from the day's own load.
 
 ---
 

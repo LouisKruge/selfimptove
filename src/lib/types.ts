@@ -150,6 +150,7 @@ export interface Task extends Timestamps {
   actual_minutes: number | null;
   status: TaskStatus;
   blocked_reason: string | null;
+  delegated_to: string | null;
   sort_order: number;
   completed_at: string | null;
 }

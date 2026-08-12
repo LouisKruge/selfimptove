@@ -5,10 +5,12 @@ import type { Task } from "@/lib/types";
 import { addDays, today } from "@/lib/core/date";
 import {
   convertTaskToProject,
+  delegateTask,
   deleteTask,
   rescheduleTask,
   setTaskStatus,
   toggleTask,
+  undelegateTask,
 } from "@/lib/actions/plan";
 import { cx } from "../primitives";
 
@@ -102,6 +104,21 @@ export function TaskMenu({ task }: { task: Task }) {
             <MenuItem disabled={pending} onClick={() => run(() => convertTaskToProject(task.id))}>
               Convert to project
             </MenuItem>
+            {task.delegated_to ? (
+              <MenuItem disabled={pending} onClick={() => run(() => undelegateTask(task.id))}>
+                Take back
+              </MenuItem>
+            ) : (
+              <MenuItem
+                disabled={pending}
+                onClick={() => {
+                  const to = window.prompt("Delegate to whom?");
+                  if (to && to.trim()) run(() => delegateTask(task.id, to.trim()));
+                }}
+              >
+                Delegate
+              </MenuItem>
+            )}
             <div className="my-1 border-t border-line" />
             <MenuItem disabled={pending} onClick={() => run(() => setTaskStatus(task.id, "CANCELLED"))}>
               Cancel

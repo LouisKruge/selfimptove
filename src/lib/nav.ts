@@ -76,6 +76,7 @@ export const NAV: NavGroup[] = [
       { href: "/learning", label: "Learning", keywords: ["skills", "study", "application"] },
       { href: "/ideas", label: "Ideas", keywords: ["vault", "capture"] },
       { href: "/reviews", label: "Reviews", keywords: ["weekly", "monthly", "90 day"] },
+      { href: "/strategist", label: "Strategist", keywords: ["analysis", "advice", "briefing", "ai", "bottleneck"] },
       { href: "/analytics", label: "Analytics", keywords: ["trends", "trajectory", "balance"] },
       { href: "/settings", label: "Settings", keywords: ["season", "weights", "profile"] },
     ],

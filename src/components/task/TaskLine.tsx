@@ -59,6 +59,7 @@ export function TaskLine({
               {task.estimated_minutes}m
             </span>
           ) : null}
+          {task.delegated_to ? <Badge tone="muted">Delegated · {task.delegated_to}</Badge> : null}
           {task.status === "BLOCKED" ? <Badge tone="critical">Blocked</Badge> : null}
           {task.status === "IN_PROGRESS" ? <Badge>In progress</Badge> : null}
           {!task.goal_id && !task.mission_id && !task.project_id ? (

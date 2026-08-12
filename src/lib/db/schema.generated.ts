@@ -215,6 +215,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   status            TEXT NOT NULL DEFAULT 'TODO'
                       CHECK (status IN ('TODO','IN_PROGRESS','BLOCKED','COMPLETE','CANCELLED')),
   blocked_reason    TEXT,
+  delegated_to      TEXT,
   sort_order        INTEGER NOT NULL DEFAULT 0,
   created_at        TEXT NOT NULL,
   updated_at        TEXT NOT NULL,

@@ -171,6 +171,38 @@ export async function rescheduleTask(taskId: string, date: string): Promise<Acti
   return ok();
 }
 
+/**
+ * Delegation keeps the outcome visible without keeping the work. The task stays
+ * linked to its goal and mission, but it stops competing for your own hours.
+ */
+export async function delegateTask(taskId: string, to: string): Promise<ActionResult> {
+  const parsed = parseWith(z.object({ id, to: requiredText }), { id: taskId, to });
+  if (!parsed.ok) return parsed.result;
+
+  const row = get<{ scheduled_date: string | null }>(
+    "SELECT scheduled_date FROM tasks WHERE id = ?",
+    [taskId],
+  );
+  if (!row) return fail("Task not found.");
+
+  update("tasks", taskId, { delegated_to: parsed.value.to, priority: "SUPPORT" });
+  if (row.scheduled_date) recomputeDayScore(row.scheduled_date);
+  refresh();
+  return ok();
+}
+
+export async function undelegateTask(taskId: string): Promise<ActionResult> {
+  const row = get<{ scheduled_date: string | null }>(
+    "SELECT scheduled_date FROM tasks WHERE id = ?",
+    [taskId],
+  );
+  if (!row) return fail("Task not found.");
+  update("tasks", taskId, { delegated_to: null });
+  if (row.scheduled_date) recomputeDayScore(row.scheduled_date);
+  refresh();
+  return ok();
+}
+
 export async function deleteTask(taskId: string): Promise<ActionResult> {
   const row = get<{ scheduled_date: string | null }>(
     "SELECT scheduled_date FROM tasks WHERE id = ?",

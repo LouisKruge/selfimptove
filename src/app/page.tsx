@@ -20,6 +20,7 @@ import {
   cx,
 } from "@/components/primitives";
 import { TaskLine } from "@/components/task/TaskLine";
+import { DismissAlert } from "@/components/shell/DismissAlert";
 
 export const dynamic = "force-dynamic";
 
@@ -474,11 +475,12 @@ export default async function CommandCenterPage() {
           <div className="grid gap-px sm:grid-cols-2">
             {c.alerts.slice(0, 8).map((a) => (
               <AlertCard
-                key={a.key}
+                key={a.id}
                 severity={a.severity}
                 title={a.title}
                 body={a.body}
                 href={a.href}
+                action={<DismissAlert id={a.id} />}
               />
             ))}
           </div>

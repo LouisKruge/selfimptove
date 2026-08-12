@@ -1,7 +1,7 @@
 import "server-only";
 
 import { today, type DayString } from "@/lib/core/date";
-import type { Mission, Season, Task, WorkoutSession } from "@/lib/types";
+import type { Mission, Notification, Season, Task, WorkoutSession } from "@/lib/types";
 import {
   activeSeason,
   bigThree,
@@ -28,7 +28,7 @@ import {
   recomputeDayScore,
   storedScore,
 } from "./scores";
-import { sortedAlerts, type Alert } from "./notifications";
+import { syncNotifications } from "./notifications";
 import { outstandingReviews } from "./reviews";
 import { formatTarget } from "@/lib/domain/progression";
 
@@ -87,7 +87,7 @@ export interface CommandCenter {
     disciplineScore: number | null;
   };
   learning: ReturnType<typeof learningStats>;
-  alerts: Alert[];
+  alerts: Notification[];
   outstandingReviews: ReturnType<typeof outstandingReviews>;
   attention: {
     overdueTasks: number;
@@ -163,7 +163,7 @@ export function commandCenter(day: DayString = today()): CommandCenter {
       disciplineScore: character.disciplineScore,
     },
     learning: learningStats(day),
-    alerts: sortedAlerts(day),
+    alerts: syncNotifications(day),
     outstandingReviews: outstandingReviews(day),
     attention: {
       overdueTasks: flagged.filter((f) => f.flags.includes("OVERDUE")).length,

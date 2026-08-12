@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { SCHEMA_SQL } from "./schema.generated";
+import { applyMigrations } from "./migrations";
 
 export type DB = Database.Database;
 
@@ -24,6 +25,7 @@ function open(): DB {
   db.pragma("foreign_keys = ON");
   db.pragma("busy_timeout = 5000");
   db.exec(SCHEMA_SQL);
+  applyMigrations(db);
   return db;
 }
 
@@ -43,6 +45,7 @@ export function openDatabaseAt(path: string): DB {
   conn.pragma("journal_mode = WAL");
   conn.pragma("foreign_keys = ON");
   conn.exec(SCHEMA_SQL);
+  applyMigrations(conn);
   return conn;
 }
 

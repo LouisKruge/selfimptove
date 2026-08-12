@@ -449,19 +449,23 @@ export function AlertCard({
           : "bg-line-strong";
 
   const content = (
-    <div className="flex gap-3.5">
-      <div className={cx("mt-0.5 w-px flex-none self-stretch", rail)} />
-      <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium leading-snug text-ink">{title}</div>
-        {body ? <p className="mt-1.5 text-xs leading-relaxed text-ink-faint">{body}</p> : null}
-      </div>
-      {action ? <div className="flex-none">{action}</div> : null}
+    <div className="min-w-0 flex-1">
+      <div className="text-sm font-medium leading-snug text-ink">{title}</div>
+      {body ? <p className="mt-1.5 text-xs leading-relaxed text-ink-faint">{body}</p> : null}
     </div>
   );
 
   return (
-    <div className="panel p-4 transition-colors hover:border-line-strong">
-      {href ? <Link href={href}>{content}</Link> : content}
+    <div className="panel flex gap-3.5 p-4 transition-colors hover:border-line-strong">
+      <div className={cx("mt-0.5 w-px flex-none self-stretch", rail)} />
+      {href ? (
+        <Link href={href} className="min-w-0 flex-1">
+          {content}
+        </Link>
+      ) : (
+        content
+      )}
+      {action ? <div className="flex-none">{action}</div> : null}
     </div>
   );
 }

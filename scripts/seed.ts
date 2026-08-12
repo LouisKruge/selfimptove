@@ -16,6 +16,7 @@ import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import Database from "better-sqlite3";
 import { SCHEMA_SQL } from "../src/lib/db/schema.generated";
+import { applyMigrations } from "../src/lib/db/migrations";
 import {
   EXERCISES,
   GOALS,
@@ -49,6 +50,7 @@ const db = new Database(DB_PATH);
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
 db.exec(SCHEMA_SQL);
+applyMigrations(db);
 
 const now = () => new Date().toISOString();
 const id = () => randomUUID();

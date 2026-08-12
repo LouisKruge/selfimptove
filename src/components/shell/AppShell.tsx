@@ -22,6 +22,7 @@ const GOTO: Record<string, string> = {
   i: "/ideas",
   v: "/reviews",
   a: "/analytics",
+  z: "/strategist",
 };
 
 export function AppShell({ children }: { children: ReactNode }) {
