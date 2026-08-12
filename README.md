@@ -3,7 +3,7 @@
 A private, data-driven personal operating system for one person.
 
 COMMAND is not a productivity app, a fitness tracker, a CRM or a budget tool. It
-is the system that connects them — 46 screens over one relational model, built
+is the system that connects them — 46 routes over one relational model, built
 around a single loop:
 
 ```
