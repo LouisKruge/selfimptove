@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { CommandPalette } from "./CommandPalette";
 
@@ -27,13 +27,19 @@ const GOTO: Record<string, string> = {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const awaitingGoto = useRef(false);
   const gotoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const openPalette = useCallback(() => setPaletteOpen(true), []);
 
+  /** The sign-in screen gets no navigation and no shortcuts — there is nothing to navigate to yet. */
+  const bare = pathname === "/login";
+
   useEffect(() => {
+    if (bare) return;
+
     const isTyping = (target: EventTarget | null) => {
       const el = target as HTMLElement | null;
       if (!el) return false;
@@ -78,7 +84,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       window.removeEventListener("keydown", onKey);
       if (gotoTimer.current) clearTimeout(gotoTimer.current);
     };
-  }, [paletteOpen, router]);
+  }, [paletteOpen, router, bare]);
+
+  if (bare) {
+    return (
+      <main className="mx-auto w-full max-w-[1400px] px-4 py-16 sm:px-6 lg:px-10">{children}</main>
+    );
+  }
 
   return (
     <>

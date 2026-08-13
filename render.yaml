@@ -1,0 +1,36 @@
+# Render blueprint — deploys COMMAND from the browser, no terminal required.
+#
+# The disk is the point. COMMAND stores everything in one SQLite file, so it
+# needs storage that outlives a deploy. Render disks require a paid instance
+# type; a free instance has no persistent filesystem and would lose every
+# logged set, lead and reflection on each restart.
+
+services:
+  - type: web
+    name: command
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    region: frankfurt
+    branch: claude/command-personal-os-k77rq2
+    healthCheckPath: /login
+    autoDeploy: true
+
+    disk:
+      name: command-data
+      mountPath: /data
+      sizeGB: 1
+
+    envVars:
+      # The database lives on the mounted disk, not in the image.
+      - key: COMMAND_DB_PATH
+        value: /data/command.db
+
+      # Defines what a calendar day is, so a session logged at 23:50 counts today.
+      - key: COMMAND_TZ
+        value: Africa/Johannesburg
+
+      # sync: false means Render prompts for this in the dashboard and never
+      # stores it in the repository. Without it, COMMAND refuses to serve.
+      - key: COMMAND_PASSWORD
+        sync: false

@@ -22,6 +22,8 @@ import {
   SeasonWeightsForm,
   ThresholdsForm,
 } from "@/components/settings/SettingsForms";
+import { SignOutButton } from "@/components/shell/SignOutButton";
+import { authEnabled as isAuthEnabled } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Settings" };
@@ -31,6 +33,7 @@ export default async function SettingsPage() {
   const user = getUser();
   const season = activeSeason(day);
   const seasons = listSeasons();
+  const authEnabled = isAuthEnabled();
   const settings = Object.fromEntries(
     all<{ key: string; value: string }>("SELECT key, value FROM settings").map((s) => [s.key, s.value]),
   );
@@ -135,6 +138,19 @@ export default async function SettingsPage() {
           <ProfileForm user={user} />
         </Section>
       ) : null}
+
+      <Section title="Access">
+        <Panel>
+          <PanelBody className="space-y-5">
+            <p className="max-w-2xl text-sm leading-relaxed text-ink-dim">
+              {authEnabled
+                ? "COMMAND is locked with a password. Signing out ends this browser's session; changing COMMAND_PASSWORD on the host ends every session everywhere."
+                : "COMMAND is running without a password, which is correct on a machine only you can reach. Set COMMAND_PASSWORD before exposing it to a network."}
+            </p>
+            {authEnabled ? <SignOutButton /> : null}
+          </PanelBody>
+        </Panel>
+      </Section>
 
       <Section title="Maintenance">
         <Panel>

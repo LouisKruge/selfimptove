@@ -167,7 +167,7 @@ export function TextField(props: {
   defaultValue?: string | number | null;
   placeholder?: string;
   required?: boolean;
-  type?: "text" | "number" | "date" | "time" | "email";
+  type?: "text" | "number" | "date" | "time" | "email" | "password";
   step?: string;
   min?: string;
   max?: string;

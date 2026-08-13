@@ -48,6 +48,49 @@ empty system.
 | --- | --- | --- |
 | `COMMAND_DB_PATH` | `data/command.db` | SQLite database location |
 | `COMMAND_TZ` | `Africa/Johannesburg` | Timezone that defines a calendar day |
+| `COMMAND_PASSWORD` | _unset_ | Locks the app. Unset is fine on localhost; **required** in production |
+
+---
+
+## Deploying it
+
+COMMAND stores everything in one SQLite file, so it needs a host that keeps its
+filesystem between restarts. **It cannot run on serverless hosting.** On Vercel,
+Netlify Functions or Lambda the filesystem is read-only outside `/tmp`, `/tmp`
+is per-instance and discarded, and each cold start would silently create an
+empty database — every logged set, lead and reflection would disappear without
+an error. That is the exact failure this system is built to refuse.
+
+What it needs is a container with a disk. The included `Dockerfile` works on
+Render, Railway, Fly or any VPS, and `render.yaml` is a Render blueprint that
+provisions the disk and mounts it at `/data`.
+
+`scripts/boot.mjs` is the entrypoint. On first boot it sees an empty database
+and creates the starting structure; on every boot after that it finds the
+database and leaves it alone, so a redeploy can never overwrite real history.
+No terminal is needed to set a hosted instance up.
+
+Render disks require a paid instance type. A free instance has no persistent
+filesystem, which puts you back in the serverless failure above.
+
+### The lock
+
+Hosted COMMAND is reachable by anyone who has the URL, and it holds a complete
+picture of one person's body, money, business and private reflection. So it
+locks itself:
+
+- Set `COMMAND_PASSWORD` and every route requires it. Signing in exchanges the
+  password for an HMAC-signed cookie that contains nothing but its own expiry,
+  so a cookie cannot be forged or read back into a password.
+- **Deployed with no password set, COMMAND serves nothing at all** and the login
+  page explains what to set. It fails closed rather than becoming a public copy
+  of your life.
+- With no password on localhost it runs open, which is the right default for a
+  machine only you can reach.
+- Changing `COMMAND_PASSWORD` invalidates every existing session, because the
+  password is the signing key.
+
+There are no user accounts. There is one user.
 
 ---
 
@@ -153,6 +196,7 @@ may be ACTIVE. Lead stage movements are written to an append-only
 | Cash forecast | `domain/forecast.ts` | 7/30/90-day projection from scheduled items; monthly items clamp to the last day of short months. |
 | Pipeline | `domain/pipeline.ts` | Conversion from recorded stage history, bottleneck detection, and backward planning from a revenue target through the real funnel. |
 | Impulse firewall | `domain/firewall.ts` | Green / yellow (24h) / red (72h). Borrowing, irreversibility, high emotional intensity, large spend and business pivots escalate. The cooling period cannot be skipped from the interface or the action. |
+| Access lock | `lib/auth.ts`, `src/proxy.ts` | One shared password exchanged for an HMAC-signed cookie. Fails closed in production when no password is set. |
 | Strategist | `services/strategist.ts` | Aggregates every engine into a ranked briefing across five roles — analyst, reviewer, strategist, planner, accountability. |
 | Nutrition trend | `domain/nutrition.ts` | Compares logged intake against the actual bodyweight slope and reports whether the two agree. |
 | Readiness | `domain/recovery.ts` | Composite of sleep, energy, stress, soreness, recent session RPE and consecutive training days. Requires at least two inputs. |
@@ -237,8 +281,16 @@ npm test
   refusing a decision inside its cooling period, the habit ceiling, and idea
   activation gating.
 
-Every route was smoke-tested for a 200, every page checked for horizontal
-overflow at 390px, and the live workout loop driven end to end in a real browser.
+Every route was smoke-tested for a 200 — signed in, with redirects disabled so a
+bounce to the login page cannot be mistaken for a passing page — every page
+checked for horizontal overflow at 390px, and the live workout loop driven end
+to end in a real browser.
+
+The lock was verified separately: every route redirects when signed out, a wrong
+password is rejected, a forged cookie is rejected, the signed-in session reaches
+all 46 routes and can still write, sign-out re-locks, and a production start with
+no password serves nothing. First boot seeds an empty database; a second boot
+over a modified one leaves it untouched.
 
 ---
 
