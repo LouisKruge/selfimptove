@@ -11,9 +11,9 @@
  * financial history is invented — those must come from the user.
  */
 
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import Database from "better-sqlite3";
 import { SCHEMA_SQL } from "../src/lib/db/schema.generated";
 import { applyMigrations } from "../src/lib/db/migrations";
@@ -45,6 +45,10 @@ if (RESET) {
   }
   console.log(`· removed ${DB_PATH}`);
 }
+
+// A fresh clone has no data directory — the database file cannot be created
+// inside one that does not exist.
+mkdirSync(dirname(DB_PATH), { recursive: true });
 
 const db = new Database(DB_PATH);
 db.pragma("journal_mode = WAL");
