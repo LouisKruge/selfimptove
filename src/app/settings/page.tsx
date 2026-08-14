@@ -24,6 +24,7 @@ import {
 } from "@/components/settings/SettingsForms";
 import { SignOutButton } from "@/components/shell/SignOutButton";
 import { authEnabled as isAuthEnabled } from "@/lib/auth";
+import { configuredWorkouts, diagnostics } from "@/lib/services/diagnostics";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Settings" };
@@ -34,6 +35,8 @@ export default async function SettingsPage() {
   const season = await activeSeason(day);
   const seasons = await listSeasons();
   const authEnabled = isAuthEnabled();
+  const diag = await diagnostics();
+  const week = await configuredWorkouts();
   const settings = Object.fromEntries(
     (await all<{ key: string; value: string }>("SELECT key, value FROM settings")).map((s) => [s.key, s.value]),
   );
@@ -148,6 +151,62 @@ export default async function SettingsPage() {
                 : "COMMAND is running without a password, which is correct on a machine only you can reach. Set COMMAND_PASSWORD before exposing it to a network."}
             </p>
             {authEnabled ? <SignOutButton /> : null}
+          </PanelBody>
+        </Panel>
+      </Section>
+
+      <Section
+        title="Data"
+        meta="What this server sees in its own database."
+      >
+        <Panel>
+          <PanelBody className="space-y-6">
+            <DataRow label="Database" value={diag.source} />
+
+            <div className="hairline pt-5">
+              <p className="label mb-3">Configuration</p>
+              <p className="mb-4 max-w-2xl text-sm leading-relaxed text-ink-dim">
+                {diag.structureTotal > 0
+                  ? "Your system is loaded. These are targets and structure, not measurements."
+                  : "Nothing is configured on this database. If you expected data here, this server is pointed at a different database than the one that was populated."}
+              </p>
+              <div className="grid gap-x-8 sm:grid-cols-2">
+                {diag.counts
+                  .filter((c) => c.kind === "STRUCTURE")
+                  .map((c) => (
+                    <DataRow key={c.label} label={c.label} value={String(c.count)} />
+                  ))}
+              </div>
+            </div>
+
+            <div className="hairline pt-5">
+              <p className="label mb-3">Recorded by you</p>
+              <p className="mb-4 max-w-2xl text-sm leading-relaxed text-ink-dim">
+                {diag.loggedTotal > 0
+                  ? "Measurements and activity you have logged."
+                  : "Nothing logged yet. Every one of these is a baseline waiting to be recorded — they are blank on purpose, never assumed to be zero."}
+              </p>
+              <div className="grid gap-x-8 sm:grid-cols-2">
+                {diag.counts
+                  .filter((c) => c.kind === "LOGGED")
+                  .map((c) => (
+                    <DataRow key={c.label} label={c.label} value={String(c.count)} />
+                  ))}
+              </div>
+            </div>
+
+            {week.length > 0 ? (
+              <div className="hairline pt-5">
+                <p className="label mb-3">Training week on file</p>
+                {week.map((w) => (
+                  <DataRow
+                    key={w.name}
+                    label={w.name}
+                    value={`${w.exercises} ${w.exercises === 1 ? "exercise" : "exercises"}`}
+                  />
+                ))}
+              </div>
+            ) : null}
           </PanelBody>
         </Panel>
       </Section>
