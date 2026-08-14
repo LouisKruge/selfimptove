@@ -26,7 +26,7 @@ export const dynamic = "force-dynamic";
 
 export default async function CommandCenterPage() {
   const day = today();
-  const c = commandCenter(day);
+  const c = await commandCenter(day);
 
   const scoreEntries = [
     { key: "BODY" as const, score: c.scores.body, href: "/body" },

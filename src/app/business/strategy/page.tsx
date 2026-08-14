@@ -20,9 +20,9 @@ export const metadata = { title: "Strategy" };
 
 export default async function StrategyPage() {
   const day = today();
-  const business = primaryBusiness();
-  const b = businessDashboard(day);
-  const conv = conversionSummary();
+  const business = await primaryBusiness();
+  const b = await businessDashboard(day);
+  const conv = await conversionSummary();
 
   return (
     <div className="space-y-10">

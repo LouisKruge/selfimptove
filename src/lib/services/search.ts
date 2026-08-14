@@ -11,7 +11,7 @@ export interface SearchResult {
 }
 
 /** Global search across the entities a person actually looks for by name. */
-export function search(query: string, limit = 40): SearchResult[] {
+export async function search(query: string, limit = 40): Promise<SearchResult[]> {
   const q = query.trim();
   if (q.length < 2) return [];
   const like = `%${q.replace(/[%_]/g, (m) => `\\${m}`)}%`;
@@ -23,10 +23,10 @@ export function search(query: string, limit = 40): SearchResult[] {
   };
 
   push(
-    all(
-      "SELECT id, title, priority, status, scheduled_date FROM tasks WHERE title LIKE ? ESCAPE '\\' ORDER BY created_at DESC LIMIT 10",
-      [like],
-    ),
+    await all(
+            "SELECT id, title, priority, status, scheduled_date FROM tasks WHERE title LIKE ? ESCAPE '\\' ORDER BY created_at DESC LIMIT 10",
+            [like],
+          ),
     (r: { id: string; title: string; status: string; scheduled_date: string | null }) => ({
       id: r.id,
       type: "Task",
@@ -37,7 +37,7 @@ export function search(query: string, limit = 40): SearchResult[] {
   );
 
   push(
-    all("SELECT id, title, status, pillar FROM goals WHERE title LIKE ? ESCAPE '\\' LIMIT 10", [like]),
+    await all("SELECT id, title, status, pillar FROM goals WHERE title LIKE ? ESCAPE '\\' LIMIT 10", [like]),
     (r: { id: string; title: string; status: string; pillar: string }) => ({
       id: r.id,
       type: "Goal",
@@ -48,7 +48,7 @@ export function search(query: string, limit = 40): SearchResult[] {
   );
 
   push(
-    all("SELECT id, title, status FROM missions WHERE title LIKE ? ESCAPE '\\' LIMIT 5", [like]),
+    await all("SELECT id, title, status FROM missions WHERE title LIKE ? ESCAPE '\\' LIMIT 5", [like]),
     (r: { id: string; title: string; status: string }) => ({
       id: r.id,
       type: "Mission",
@@ -59,9 +59,9 @@ export function search(query: string, limit = 40): SearchResult[] {
   );
 
   push(
-    all("SELECT id, title, status, pillar FROM projects WHERE title LIKE ? ESCAPE '\\' LIMIT 10", [
-      like,
-    ]),
+    await all("SELECT id, title, status, pillar FROM projects WHERE title LIKE ? ESCAPE '\\' LIMIT 10", [
+            like,
+          ]),
     (r: { id: string; title: string; status: string; pillar: string }) => ({
       id: r.id,
       type: "Project",
@@ -72,9 +72,9 @@ export function search(query: string, limit = 40): SearchResult[] {
   );
 
   push(
-    all("SELECT id, name, category, muscle_group FROM exercises WHERE name LIKE ? ESCAPE '\\' LIMIT 10", [
-      like,
-    ]),
+    await all("SELECT id, name, category, muscle_group FROM exercises WHERE name LIKE ? ESCAPE '\\' LIMIT 10", [
+            like,
+          ]),
     (r: { id: string; name: string; category: string; muscle_group: string | null }) => ({
       id: r.id,
       type: "Exercise",
@@ -85,7 +85,7 @@ export function search(query: string, limit = 40): SearchResult[] {
   );
 
   push(
-    all("SELECT id, name, type FROM workouts WHERE name LIKE ? ESCAPE '\\' LIMIT 8", [like]),
+    await all("SELECT id, name, type FROM workouts WHERE name LIKE ? ESCAPE '\\' LIMIT 8", [like]),
     (r: { id: string; name: string; type: string }) => ({
       id: r.id,
       type: "Workout",
@@ -96,10 +96,10 @@ export function search(query: string, limit = 40): SearchResult[] {
   );
 
   push(
-    all(
-      "SELECT id, company, contact_name, stage FROM leads WHERE company LIKE ? ESCAPE '\\' OR contact_name LIKE ? ESCAPE '\\' LIMIT 10",
-      [like, like],
-    ),
+    await all(
+            "SELECT id, company, contact_name, stage FROM leads WHERE company LIKE ? ESCAPE '\\' OR contact_name LIKE ? ESCAPE '\\' LIMIT 10",
+            [like, like],
+          ),
     (r: { id: string; company: string; contact_name: string | null; stage: string }) => ({
       id: r.id,
       type: "Lead",
@@ -110,7 +110,7 @@ export function search(query: string, limit = 40): SearchResult[] {
   );
 
   push(
-    all("SELECT id, name, status FROM customers WHERE name LIKE ? ESCAPE '\\' LIMIT 8", [like]),
+    await all("SELECT id, name, status FROM customers WHERE name LIKE ? ESCAPE '\\' LIMIT 8", [like]),
     (r: { id: string; name: string; status: string }) => ({
       id: r.id,
       type: "Customer",
@@ -121,7 +121,7 @@ export function search(query: string, limit = 40): SearchResult[] {
   );
 
   push(
-    all("SELECT id, title, stage FROM ideas WHERE title LIKE ? ESCAPE '\\' LIMIT 8", [like]),
+    await all("SELECT id, title, stage FROM ideas WHERE title LIKE ? ESCAPE '\\' LIMIT 8", [like]),
     (r: { id: string; title: string; stage: string }) => ({
       id: r.id,
       type: "Idea",
@@ -132,9 +132,9 @@ export function search(query: string, limit = 40): SearchResult[] {
   );
 
   push(
-    all("SELECT id, title, status, level FROM decisions WHERE title LIKE ? ESCAPE '\\' LIMIT 8", [
-      like,
-    ]),
+    await all("SELECT id, title, status, level FROM decisions WHERE title LIKE ? ESCAPE '\\' LIMIT 8", [
+            like,
+          ]),
     (r: { id: string; title: string; status: string; level: string }) => ({
       id: r.id,
       type: "Decision",
@@ -145,9 +145,9 @@ export function search(query: string, limit = 40): SearchResult[] {
   );
 
   push(
-    all("SELECT id, name, current_level, target_level FROM skills WHERE name LIKE ? ESCAPE '\\' LIMIT 8", [
-      like,
-    ]),
+    await all("SELECT id, name, current_level, target_level FROM skills WHERE name LIKE ? ESCAPE '\\' LIMIT 8", [
+            like,
+          ]),
     (r: { id: string; name: string; current_level: number; target_level: number }) => ({
       id: r.id,
       type: "Skill",
@@ -158,10 +158,10 @@ export function search(query: string, limit = 40): SearchResult[] {
   );
 
   push(
-    all(
-      "SELECT id, title, body FROM notes WHERE title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\' LIMIT 8",
-      [like, like],
-    ),
+    await all(
+            "SELECT id, title, body FROM notes WHERE title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\' LIMIT 8",
+            [like, like],
+          ),
     (r: { id: string; title: string | null; body: string }) => ({
       id: r.id,
       type: "Note",

@@ -1,81 +1,154 @@
 import "server-only";
 
-import Database from "better-sqlite3";
+import { createClient, type Client, type InValue, type ResultSet } from "@libsql/client";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { SCHEMA_SQL } from "./schema.generated";
 import { applyMigrations } from "./migrations";
 
-export type DB = Database.Database;
+/**
+ * Storage.
+ *
+ * COMMAND speaks SQLite, and libSQL lets the same SQL run against two very
+ * different places without changing a query:
+ *
+ *   · a local file, which is what you want on your own machine
+ *   · a hosted libSQL database, which is what you need when the app runs
+ *     somewhere with no durable filesystem of its own
+ *
+ * Set `TURSO_DATABASE_URL` and it uses the hosted database. Leave it unset and
+ * it uses `COMMAND_DB_PATH`, defaulting to `data/command.db`. Nothing else in
+ * the codebase knows or cares which one it got.
+ *
+ * Every helper here is async, because a database reached over a network cannot
+ * be read in the same tick the way a local file can.
+ */
 
-const globalForDb = globalThis as unknown as { __commandDb?: DB };
+export type DB = Client;
 
-function resolveDbPath(): string {
-  const configured = process.env.COMMAND_DB_PATH;
-  if (configured && configured.trim().length > 0) return resolve(configured);
-  return resolve(process.cwd(), "data", "command.db");
-}
+const globalForDb = globalThis as unknown as { __commandDb?: Promise<Client> };
 
-function open(): DB {
-  const path = resolveDbPath();
+function createConnection(): Client {
+  const url = process.env.TURSO_DATABASE_URL?.trim();
+
+  if (url) {
+    return createClient({
+      url,
+      authToken: process.env.TURSO_AUTH_TOKEN?.trim(),
+      // Counts and cents are read as JavaScript numbers, not bigints, so the
+      // arithmetic in the domain engines behaves exactly as it always has.
+      intMode: "number",
+    });
+  }
+
+  const path = resolve(process.env.COMMAND_DB_PATH ?? "data/command.db");
   mkdirSync(dirname(path), { recursive: true });
-
-  const db = new Database(path);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-  db.pragma("busy_timeout = 5000");
-  db.exec(SCHEMA_SQL);
-  applyMigrations(db);
-  return db;
+  return createClient({ url: `file:${path}`, intMode: "number" });
 }
 
 /**
- * Single shared connection. Cached on globalThis so Next's dev-server module
- * reloading does not leak file handles.
+ * Opens the connection and brings the schema up to date exactly once per
+ * process. The promise itself is cached, so concurrent first requests all wait
+ * on the same setup rather than racing to create the same tables.
  */
-export function db(): DB {
-  if (!globalForDb.__commandDb) globalForDb.__commandDb = open();
+async function connect(): Promise<Client> {
+  const client = createConnection();
+  await client.execute("PRAGMA foreign_keys = ON");
+
+  // Applying the whole schema costs a large round trip, and on serverless that
+  // would be paid on every cold start. Fifty-six CREATE TABLE IF NOT EXISTS
+  // statements against a database that already has them do nothing, so check
+  // first and only pay when there is something to create.
+  const provisioned = await client.execute(
+    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'users'",
+  );
+  if (provisioned.rows.length === 0) await client.executeMultiple(SCHEMA_SQL);
+
+  // Migrations still run every time: an existing database needs them after a
+  // deploy that adds a column, and they are two cheap queries each.
+  await applyMigrations(client);
+  return client;
+}
+
+export function db(): Promise<Client> {
+  if (!globalForDb.__commandDb) globalForDb.__commandDb = connect();
   return globalForDb.__commandDb;
 }
 
-/** Opens a connection at an explicit path (used by scripts and tests). */
-export function openDatabaseAt(path: string): DB {
-  mkdirSync(dirname(resolve(path)), { recursive: true });
-  const conn = new Database(resolve(path));
-  conn.pragma("journal_mode = WAL");
-  conn.pragma("foreign_keys = ON");
-  conn.exec(SCHEMA_SQL);
-  applyMigrations(conn);
-  return conn;
+/** Drops the cached connection. Used by tests between throwaway databases. */
+export async function closeDatabase(): Promise<void> {
+  const pending = globalForDb.__commandDb;
+  globalForDb.__commandDb = undefined;
+  if (!pending) return;
+  try {
+    (await pending).close();
+  } catch {
+    /* already closed */
+  }
 }
 
 /* ---------------------------------------------------------------- helpers */
 
-export function all<T = Record<string, unknown>>(
+/**
+ * libSQL returns rows that behave like both arrays and objects. Everything
+ * downstream expects plain objects it can spread and destructure, so rows are
+ * rebuilt against the column list.
+ */
+function toRows<T>(result: ResultSet): T[] {
+  return result.rows.map((row) => {
+    const object: Record<string, unknown> = {};
+    result.columns.forEach((column, index) => {
+      object[column] = row[index];
+    });
+    return object as T;
+  });
+}
+
+/** `undefined` is not a value a parameter can carry; it always means SQL NULL. */
+function toArgs(params: unknown[]): InValue[] {
+  return params.map((p) => (p === undefined ? null : (p as InValue)));
+}
+
+export async function all<T = Record<string, unknown>>(
   sql: string,
   params: unknown[] = [],
-): T[] {
-  return db().prepare(sql).all(...(params as never[])) as T[];
+): Promise<T[]> {
+  const client = await db();
+  return toRows<T>(await client.execute({ sql, args: toArgs(params) }));
 }
 
-export function get<T = Record<string, unknown>>(
+export async function get<T = Record<string, unknown>>(
   sql: string,
   params: unknown[] = [],
-): T | undefined {
-  return db().prepare(sql).get(...(params as never[])) as T | undefined;
+): Promise<T | undefined> {
+  const rows = await all<T>(sql, params);
+  return rows[0];
 }
 
-export function run(sql: string, params: unknown[] = []) {
-  return db().prepare(sql).run(...(params as never[]));
+export async function run(sql: string, params: unknown[] = []): Promise<void> {
+  const client = await db();
+  await client.execute({ sql, args: toArgs(params) });
 }
 
-export function transact<T>(fn: (conn: DB) => T): T {
-  const conn = db();
-  return conn.transaction(fn)(conn);
+/**
+ * Runs several statements as one transaction.
+ *
+ * Used where a set of writes has to land together — renumbering set indices,
+ * for instance, where a half-applied sequence would leave gaps or duplicates.
+ */
+export async function batch(
+  statements: ReadonlyArray<{ sql: string; params?: unknown[] }>,
+): Promise<void> {
+  if (statements.length === 0) return;
+  const client = await db();
+  await client.batch(
+    statements.map((s) => ({ sql: s.sql, args: toArgs(s.params ?? []) })),
+    "write",
+  );
 }
 
 /** Scalar query returning a number, defaulting to 0 for NULL/absent rows. */
-export function scalar(sql: string, params: unknown[] = []): number {
-  const row = get<{ v: number | null }>(sql, params);
+export async function scalar(sql: string, params: unknown[] = []): Promise<number> {
+  const row = await get<{ v: number | null }>(sql, params);
   return row?.v ?? 0;
 }

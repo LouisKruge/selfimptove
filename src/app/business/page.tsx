@@ -26,9 +26,9 @@ export const metadata = { title: "Business" };
 
 export default async function BusinessDashboardPage() {
   const day = today();
-  const b = businessDashboard(day);
-  const score = storedScore(day);
-  const series = scoreSeries("business", 28, day);
+  const b = await businessDashboard(day);
+  const score = await storedScore(day);
+  const series = await scoreSeries("business", 28, day);
   const t = trajectory(series.map((s) => s.value));
 
   const mrrProgress =

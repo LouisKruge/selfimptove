@@ -43,16 +43,16 @@ export default async function MissionDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const mission = getMission(id);
+  const mission = await getMission(id);
   if (!mission) notFound();
 
   const day = today();
-  const progress = computeMissionProgress(mission, day);
-  const milestones = missionMilestones(mission.id);
-  const kpis = missionKpis(mission.id);
-  const risks = missionRisks(mission.id);
-  const projects = missionProjects(mission.id);
-  const tasks = missionTasks(mission.id);
+  const progress = await computeMissionProgress(mission, day);
+  const milestones = await missionMilestones(mission.id);
+  const kpis = await missionKpis(mission.id);
+  const risks = await missionRisks(mission.id);
+  const projects = await missionProjects(mission.id);
+  const tasks = await missionTasks(mission.id);
   const openTasks = tasks.filter((t) => t.status !== "COMPLETE" && t.status !== "CANCELLED");
 
   return (

@@ -29,9 +29,9 @@ const HORIZON_LABEL: Record<string, string> = {
 };
 
 export default async function GoalsPage() {
-  const user = getUser();
-  const tree = goalTree("ACTIVE");
-  const all = listGoals({ status: "ACTIVE" });
+  const user = await getUser();
+  const tree = await goalTree("ACTIVE");
+  const all = await listGoals({ status: "ACTIVE" });
   const parents = all.map((g) => ({
     value: g.id,
     label: `${HORIZON_LABEL[g.horizon]} · ${g.title}`,

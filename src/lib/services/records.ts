@@ -25,23 +25,23 @@ export interface DetectedRecord {
   display: string;
 }
 
-export function detectStrengthRecords(
+export async function detectStrengthRecords(
   exerciseId: string,
   sessionId: string,
   date: DayString,
-): DetectedRecord[] {
-  const sessionSets = all<WorkoutSet>(
-    "SELECT * FROM workout_sets WHERE session_id = ? AND exercise_id = ? AND is_warmup = 0",
-    [sessionId, exerciseId],
-  );
+): Promise<DetectedRecord[]> {
+  const sessionSets = await all<WorkoutSet>(
+      "SELECT * FROM workout_sets WHERE session_id = ? AND exercise_id = ? AND is_warmup = 0",
+      [sessionId, exerciseId],
+    );
   if (sessionSets.length === 0) return [];
 
   // Everything logged for this exercise before this session.
-  const priorSets = all<WorkoutSet>(
-    `SELECT * FROM workout_sets
+  const priorSets = await all<WorkoutSet>(
+      `SELECT * FROM workout_sets
       WHERE exercise_id = ? AND is_warmup = 0 AND session_id <> ? AND date <= ?`,
-    [exerciseId, sessionId, date],
-  );
+      [exerciseId, sessionId, date],
+    );
 
   const detected: DetectedRecord[] = [];
 
@@ -104,33 +104,33 @@ export function detectStrengthRecords(
 }
 
 /** Detects and persists records for a completed session. Returns what was new. */
-export function recordSessionPRs(sessionId: string, date: DayString): DetectedRecord[] {
-  const exerciseIds = all<{ exercise_id: string }>(
-    "SELECT DISTINCT exercise_id FROM workout_sets WHERE session_id = ? AND is_warmup = 0",
-    [sessionId],
-  ).map((r) => r.exercise_id);
+export async function recordSessionPRs(sessionId: string, date: DayString): Promise<DetectedRecord[]> {
+  const exerciseIds = (await all<{ exercise_id: string }>(
+      "SELECT DISTINCT exercise_id FROM workout_sets WHERE session_id = ? AND is_warmup = 0",
+      [sessionId],
+    )).map((r) => r.exercise_id);
 
   const out: DetectedRecord[] = [];
   for (const exerciseId of exerciseIds) {
-    for (const rec of detectStrengthRecords(exerciseId, sessionId, date)) {
-      const already = get<{ id: string }>(
-        `SELECT id FROM personal_records
+    for (const rec of await detectStrengthRecords(exerciseId, sessionId, date)) {
+      const already = await get<{ id: string }>(
+              `SELECT id FROM personal_records
           WHERE domain = 'STRENGTH' AND exercise_id = ? AND kind = ? AND source_id = ?`,
-        [exerciseId, rec.kind, sessionId],
-      );
+              [exerciseId, rec.kind, sessionId],
+            );
       if (already) continue;
-      insert("personal_records", {
-        domain: "STRENGTH",
-        exercise_id: exerciseId,
-        station: null,
-        run_distance_m: null,
-        kind: rec.kind,
-        value: rec.value,
-        display: rec.display,
-        previous_value: rec.previous,
-        date,
-        source_id: sessionId,
-      });
+      await insert("personal_records", {
+                domain: "STRENGTH",
+                exercise_id: exerciseId,
+                station: null,
+                run_distance_m: null,
+                kind: rec.kind,
+                value: rec.value,
+                display: rec.display,
+                previous_value: rec.previous,
+                date,
+                source_id: sessionId,
+              });
       out.push(rec);
     }
   }
@@ -138,19 +138,19 @@ export function recordSessionPRs(sessionId: string, date: DayString): DetectedRe
 }
 
 /** Distance and pace records for a run, bucketed by rounded distance. */
-export function recordRunPRs(runId: string, date: DayString): DetectedRecord[] {
-  const run = get<{ distance_m: number | null; duration_sec: number | null }>(
-    "SELECT distance_m, duration_sec FROM runs WHERE id = ?",
-    [runId],
-  );
+export async function recordRunPRs(runId: string, date: DayString): Promise<DetectedRecord[]> {
+  const run = await get<{ distance_m: number | null; duration_sec: number | null }>(
+      "SELECT distance_m, duration_sec FROM runs WHERE id = ?",
+      [runId],
+    );
   if (!run || !run.distance_m || !run.duration_sec) return [];
 
   const out: DetectedRecord[] = [];
 
-  const longest = get<{ v: number | null }>(
-    "SELECT MAX(distance_m) AS v FROM runs WHERE id <> ? AND date <= ?",
-    [runId, date],
-  )?.v;
+  const longest = (await get<{ v: number | null }>(
+      "SELECT MAX(distance_m) AS v FROM runs WHERE id <> ? AND date <= ?",
+      [runId, date],
+    ))?.v;
   if (longest !== null && longest !== undefined && run.distance_m > longest) {
     out.push({
       kind: "DISTANCE",
@@ -158,7 +158,7 @@ export function recordRunPRs(runId: string, date: DayString): DetectedRecord[] {
       previous: longest,
       display: `${(run.distance_m / 1000).toFixed(2)}km — longest run`,
     });
-    persistRun(runId, date, "DISTANCE", run.distance_m, longest, out[out.length - 1].display, run.distance_m);
+    await persistRun(runId, date, "DISTANCE", run.distance_m, longest, out[out.length - 1].display, run.distance_m);
   }
 
   // Pace records are compared within a distance bucket so 1km is not
@@ -166,23 +166,23 @@ export function recordRunPRs(runId: string, date: DayString): DetectedRecord[] {
   const bucket = distanceBucket(run.distance_m);
   const pace = paceSecPerKm(run.distance_m, run.duration_sec);
   if (pace !== null && bucket !== null) {
-    const prior = get<{ v: number | null }>(
-      `SELECT MIN(avg_pace_sec) AS v FROM runs
+    const prior = (await get<{ v: number | null }>(
+          `SELECT MIN(avg_pace_sec) AS v FROM runs
         WHERE id <> ? AND date <= ? AND avg_pace_sec IS NOT NULL
           AND distance_m >= ? AND distance_m <= ?`,
-      [runId, date, bucket.min, bucket.max],
-    )?.v;
+          [runId, date, bucket.min, bucket.max],
+        ))?.v;
     if (prior !== null && prior !== undefined && pace < prior) {
       const display = `${fmtPace(pace)} over ${bucket.label}`;
       out.push({ kind: "PACE", value: pace, previous: prior, display });
-      persistRun(runId, date, "PACE", pace, prior, display, run.distance_m);
+      await persistRun(runId, date, "PACE", pace, prior, display, run.distance_m);
     }
   }
 
   return out;
 }
 
-function persistRun(
+async function persistRun(
   runId: string,
   date: DayString,
   kind: PersonalRecord["kind"],
@@ -191,63 +191,63 @@ function persistRun(
   display: string,
   distanceM: number,
 ) {
-  const already = get<{ id: string }>(
-    "SELECT id FROM personal_records WHERE domain = 'RUN' AND kind = ? AND source_id = ?",
-    [kind, runId],
-  );
+  const already = await get<{ id: string }>(
+      "SELECT id FROM personal_records WHERE domain = 'RUN' AND kind = ? AND source_id = ?",
+      [kind, runId],
+    );
   if (already) return;
-  insert("personal_records", {
-    domain: "RUN",
-    exercise_id: null,
-    station: null,
-    run_distance_m: distanceM,
-    kind,
-    value,
-    display,
-    previous_value: previous,
-    date,
-    source_id: runId,
-  });
+  await insert("personal_records", {
+        domain: "RUN",
+        exercise_id: null,
+        station: null,
+        run_distance_m: distanceM,
+        kind,
+        value,
+        display,
+        previous_value: previous,
+        date,
+        source_id: runId,
+      });
 }
 
 /** Fastest recorded time at each HYROX station. */
-export function recordHyroxPRs(hyroxSessionId: string, date: DayString): DetectedRecord[] {
-  const stations = all<{ id: string; station: HyroxStationName; duration_sec: number | null }>(
-    "SELECT id, station, duration_sec FROM hyrox_stations WHERE hyrox_session_id = ?",
-    [hyroxSessionId],
-  );
+export async function recordHyroxPRs(hyroxSessionId: string, date: DayString): Promise<DetectedRecord[]> {
+  const stations = await all<{ id: string; station: HyroxStationName; duration_sec: number | null }>(
+      "SELECT id, station, duration_sec FROM hyrox_stations WHERE hyrox_session_id = ?",
+      [hyroxSessionId],
+    );
 
   const out: DetectedRecord[] = [];
   for (const s of stations) {
     if (!s.duration_sec || s.duration_sec <= 0) continue;
-    const prior = get<{ v: number | null }>(
-      `SELECT MIN(hs.duration_sec) AS v FROM hyrox_stations hs
+    const prior = (await get<{ v: number | null }>(
+          `SELECT MIN(hs.duration_sec) AS v FROM hyrox_stations hs
          JOIN hyrox_sessions ss ON ss.id = hs.hyrox_session_id
         WHERE hs.station = ? AND hs.hyrox_session_id <> ? AND ss.date <= ?
           AND hs.duration_sec IS NOT NULL AND hs.duration_sec > 0`,
-      [s.station, hyroxSessionId, date],
-    )?.v;
+          [s.station, hyroxSessionId, date],
+        ))?.v;
     if (prior === null || prior === undefined || s.duration_sec >= prior) continue;
 
-    const already = get<{ id: string }>(
-      "SELECT id FROM personal_records WHERE domain = 'HYROX' AND station = ? AND source_id = ?",
-      [s.station, hyroxSessionId],
-    );
+    const already = await get<{ id: string }>(
+          "SELECT id FROM personal_records WHERE domain = 'HYROX' AND station = ? AND source_id = ?",
+          [s.station, hyroxSessionId],
+        );
     if (already) continue;
 
     const display = `${fmtTime(s.duration_sec)} — ${s.station.replace(/_/g, " ").toLowerCase()}`;
-    insert("personal_records", {
-      domain: "HYROX",
-      exercise_id: null,
-      station: s.station,
-      run_distance_m: null,
-      kind: "TIME",
-      value: s.duration_sec,
-      display,
-      previous_value: prior,
-      date,
-      source_id: hyroxSessionId,
-    });
+    await insert("personal_records", {
+            domain: "HYROX",
+            exercise_id: null,
+            station: s.station,
+            run_distance_m: null,
+            kind: "TIME",
+            value: s.duration_sec,
+            display,
+            previous_value: prior,
+            date,
+            source_id: hyroxSessionId,
+          });
     out.push({ kind: "TIME", value: s.duration_sec, previous: prior, display });
   }
   return out;

@@ -1,4 +1,4 @@
-import type { Database } from "better-sqlite3";
+import type { Client } from "@libsql/client";
 
 /**
  * Additive migrations.
@@ -23,23 +23,24 @@ const COLUMNS: ColumnMigration[] = [
   { table: "lead_stage_events", column: "updated_at", definition: "TEXT" },
 ];
 
-export function applyMigrations(db: Database): void {
+export async function applyMigrations(db: Client): Promise<void> {
   for (const m of COLUMNS) {
-    if (!tableExists(db, m.table)) continue;
-    if (columnExists(db, m.table, m.column)) continue;
-    db.exec(`ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.definition}`);
+    if (!(await tableExists(db, m.table))) continue;
+    if (await columnExists(db, m.table, m.column)) continue;
+    await db.execute(`ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.definition}`);
   }
 }
 
-function tableExists(db: Database, table: string): boolean {
-  return (
-    db
-      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
-      .get(table) !== undefined
-  );
+async function tableExists(db: Client, table: string): Promise<boolean> {
+  const result = await db.execute({
+    sql: "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+    args: [table],
+  });
+  return result.rows.length > 0;
 }
 
-function columnExists(db: Database, table: string, column: string): boolean {
-  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
-  return rows.some((r) => r.name === column);
+async function columnExists(db: Client, table: string, column: string): Promise<boolean> {
+  const result = await db.execute(`PRAGMA table_info(${table})`);
+  const nameIndex = result.columns.indexOf("name");
+  return result.rows.some((row) => row[nameIndex] === column);
 }

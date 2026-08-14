@@ -53,8 +53,11 @@ export default async function ReviewsPage({
 }) {
   const params = await searchParams;
   const day = today();
-  const reviews = listReviews();
-  const outstanding = outstandingReviews(day);
+  const reviews = await listReviews();
+  const outstanding = await outstandingReviews(day);
+  const periods = new Map(
+    await Promise.all(KINDS.map(async (k) => [k.kind, await periodFor(k.kind, day)] as const)),
+  );
 
   return (
     <div className="space-y-10">
@@ -80,7 +83,7 @@ export default async function ReviewsPage({
       <Section title="Start a review">
         <div className="grid gap-px sm:grid-cols-2">
           {KINDS.map((k) => {
-            const period = periodFor(k.kind, day);
+            const period = periods.get(k.kind)!;
             return (
               <Panel key={k.kind}>
                 <PanelBody className="flex h-full flex-col gap-4">

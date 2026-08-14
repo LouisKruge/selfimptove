@@ -25,14 +25,17 @@ export default async function ProjectsPage({
 }) {
   const params = await searchParams;
   const day = today();
-  const projects = listProjects();
-  const missions = listMissions()
+  const projects = await listProjects();
+  const missions = (await listMissions())
     .filter((m) => m.status === "ACTIVE")
     .map((m) => ({ value: m.id, label: m.title }));
-  const goals = listGoals({ status: "ACTIVE" }).map((g) => ({ value: g.id, label: g.title }));
+  const goals = (await listGoals({ status: "ACTIVE" })).map((g) => ({ value: g.id, label: g.title }));
 
   const open = projects.filter((p) => p.status !== "COMPLETE" && p.status !== "CANCELLED");
   const closed = projects.filter((p) => p.status === "COMPLETE" || p.status === "CANCELLED");
+  const progressByProject = new Map(
+    await Promise.all(open.map(async (p) => [p.id, await projectProgress(p.id)] as const)),
+  );
 
   return (
     <div className="space-y-10">
@@ -51,7 +54,7 @@ export default async function ProjectsPage({
         ) : (
           <div className="space-y-px">
             {open.map((p) => {
-              const progress = projectProgress(p.id);
+              const progress = progressByProject.get(p.id) ?? null;
               return (
                 <Panel key={p.id} className={cx(p.status === "BLOCKED" && "border-l-2 border-l-critical")}>
                   <PanelBody>

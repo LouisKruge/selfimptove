@@ -24,10 +24,10 @@ export const metadata = { title: "Habits" };
 
 export default async function HabitsPage() {
   const day = today();
-  const habits = listHabits();
-  const stats = habitStats(day);
-  const done = [...habitDoneSet(day)];
-  const grid = habitGrid(28, day);
+  const habits = await listHabits();
+  const stats = await habitStats(day);
+  const done = [...await habitDoneSet(day)];
+  const grid = await habitGrid(28, day);
 
   const p7 = habitPortfolio(stats, 7);
   const p30 = habitPortfolio(stats, 30);

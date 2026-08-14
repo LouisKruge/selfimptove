@@ -25,8 +25,8 @@ export const metadata = { title: "Investments" };
 
 export default async function InvestmentsPage() {
   const day = today();
-  const investments = investmentViews();
-  const contributions = investmentContributions();
+  const investments = await investmentViews();
+  const contributions = await investmentContributions();
 
   const total = investments.reduce((t, i) => t + i.current_cents, 0);
   const basis = investments.reduce((t, i) => t + i.cost_basis_cents, 0);

@@ -49,30 +49,30 @@ export default async function TodayPage({
   const params = await searchParams;
   const day = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : today();
 
-  const season = activeSeason(day);
-  const mission = primaryMission();
-  const progress = mission ? computeMissionProgress(mission, day) : null;
-  const big3 = bigThree(day);
-  const load = dayLoad(day);
-  const score = storedScore(day);
-  const streak = currentStreak(60, day);
-  const body = bodyDashboard(day);
-  const character = characterDashboard(day);
-  const habits = listHabits();
-  const doneHabits = [...habitDoneSet(day)];
-  const promises = promisesFor(day);
-  const salesAction = nextSalesActions(1, day)[0] ?? null;
-  const flagged = flagTasks(openTasks(), day);
+  const season = await activeSeason(day);
+  const mission = await primaryMission();
+  const progress = mission ? await computeMissionProgress(mission, day) : null;
+  const big3 = await bigThree(day);
+  const load = await dayLoad(day);
+  const score = await storedScore(day);
+  const streak = await currentStreak(60, day);
+  const body = await bodyDashboard(day);
+  const character = await characterDashboard(day);
+  const habits = await listHabits();
+  const doneHabits = [...await habitDoneSet(day)];
+  const promises = await promisesFor(day);
+  const salesAction = (await nextSalesActions(1, day))[0] ?? null;
+  const flagged = flagTasks(await openTasks(), day);
 
   const consistency = Object.fromEntries(
     character.habits.map((h) => [h.habitId, h.consistency30]),
   );
 
-  const projects = listProjects({ status: "ACTIVE" }).map((p) => ({ value: p.id, label: p.title }));
-  const missions = listMissions()
+  const projects = (await listProjects({ status: "ACTIVE" })).map((p) => ({ value: p.id, label: p.title }));
+  const missions = (await listMissions())
     .filter((m) => m.status === "ACTIVE")
     .map((m) => ({ value: m.id, label: m.title }));
-  const goals = listGoals({ status: "ACTIVE" }).map((g) => ({ value: g.id, label: g.title }));
+  const goals = (await listGoals({ status: "ACTIVE" })).map((g) => ({ value: g.id, label: g.title }));
 
   const overdue = flagged.filter((f) => f.flags.includes("OVERDUE"));
 

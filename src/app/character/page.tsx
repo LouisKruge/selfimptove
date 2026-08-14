@@ -34,12 +34,12 @@ export default async function CharacterPage({
 }) {
   const params = await searchParams;
   const day = today();
-  const c = characterDashboard(day);
-  const habits = listHabits();
-  const done = [...habitDoneSet(day)];
-  const todayPromises = promisesFor(day);
-  const score = storedScore(day);
-  const series = scoreSeries("character", 28, day);
+  const c = await characterDashboard(day);
+  const habits = await listHabits();
+  const done = [...await habitDoneSet(day)];
+  const todayPromises = await promisesFor(day);
+  const score = await storedScore(day);
+  const series = await scoreSeries("character", 28, day);
   const t = trajectory(series.map((s) => s.value));
 
   const consistency = Object.fromEntries(c.habits.map((h) => [h.habitId, h.consistency30]));

@@ -36,9 +36,9 @@ export default async function NutritionPage({
   const params = await searchParams;
   const day = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : today();
 
-  const n = nutritionDay(day);
-  const trend = nutritionTrend(28, day);
-  const presets = mealPresets();
+  const n = await nutritionDay(day);
+  const trend = await nutritionTrend(28, day);
+  const presets = await mealPresets();
 
   const consumed = n.log ?? { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0, water_ml: 0 };
 

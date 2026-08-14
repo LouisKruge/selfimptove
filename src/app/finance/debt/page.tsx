@@ -24,8 +24,8 @@ export const metadata = { title: "Debt" };
 
 export default async function DebtPage() {
   const day = today();
-  const plan = debtPlan();
-  const payments = debtPayments();
+  const plan = await debtPlan();
+  const payments = await debtPayments();
 
   return (
     <div className="space-y-10">

@@ -78,7 +78,7 @@ export const VERDICT_OPTIONS: Trend[] = ["UP", "FLAT", "DOWN"];
 
 /* ------------------------------------------------------------- periods */
 
-export function periodFor(kind: ReviewKind, day: DayString): { start: DayString; end: DayString } {
+export async function periodFor(kind: ReviewKind, day: DayString): Promise<{ start: DayString; end: DayString }> {
   switch (kind) {
     case "DAILY":
       return { start: day, end: day };
@@ -87,7 +87,7 @@ export function periodFor(kind: ReviewKind, day: DayString): { start: DayString;
     case "MONTHLY":
       return { start: startOfMonth(day), end: endOfMonth(day) };
     case "NINETY_DAY": {
-      const mission = primaryMission();
+      const mission = await primaryMission();
       if (mission) return { start: mission.start_date, end: mission.end_date };
       return { start: addDays(day, -89), end: day };
     }
@@ -102,47 +102,47 @@ export function periodLabel(kind: ReviewKind, start: DayString, end: DayString):
 
 /* -------------------------------------------------------------- storage */
 
-export function listReviews(kind?: ReviewKind): Review[] {
+export async function listReviews(kind?: ReviewKind): Promise<Review[]> {
   return kind
-    ? all<Review>("SELECT * FROM reviews WHERE kind = ? ORDER BY period_start DESC", [kind])
-    : all<Review>("SELECT * FROM reviews ORDER BY period_start DESC, kind");
+    ? await all<Review>("SELECT * FROM reviews WHERE kind = ? ORDER BY period_start DESC", [kind])
+    : await all<Review>("SELECT * FROM reviews ORDER BY period_start DESC, kind");
 }
 
-export function getReview(id: string): Review | undefined {
-  return get<Review>("SELECT * FROM reviews WHERE id = ?", [id]);
+export async function getReview(id: string): Promise<Review | undefined> {
+  return await get<Review>("SELECT * FROM reviews WHERE id = ?", [id]);
 }
 
-export function findReview(kind: ReviewKind, start: DayString): Review | undefined {
-  return get<Review>("SELECT * FROM reviews WHERE kind = ? AND period_start = ?", [kind, start]);
+export async function findReview(kind: ReviewKind, start: DayString): Promise<Review | undefined> {
+  return await get<Review>("SELECT * FROM reviews WHERE kind = ? AND period_start = ?", [kind, start]);
 }
 
 /** Fetches the review for a period, creating the draft if it does not exist. */
-export function ensureReview(kind: ReviewKind, day: DayString = today()): Review {
-  const { start, end } = periodFor(kind, day);
-  const existing = findReview(kind, start);
+export async function ensureReview(kind: ReviewKind, day: DayString = today()): Promise<Review> {
+  const { start, end } = await periodFor(kind, day);
+  const existing = await findReview(kind, start);
   if (existing) return existing;
-  const id = insert("reviews", {
-    kind,
-    period_start: start,
-    period_end: end,
-    status: "DRAFT",
-    answers_json: "{}",
-  });
-  return getReview(id)!;
+  const id = await insert("reviews", {
+      kind,
+      period_start: start,
+      period_end: end,
+      status: "DRAFT",
+      answers_json: "{}",
+    });
+  return (await getReview(id))!;
 }
 
-export function saveReviewAnswers(id: string, answers: Record<string, string>): void {
-  update("reviews", id, { answers_json: JSON.stringify(answers) });
+export async function saveReviewAnswers(id: string, answers: Record<string, string>): Promise<void> {
+  await update("reviews", id, { answers_json: JSON.stringify(answers) });
 }
 
-export function completeReview(id: string): void {
-  const review = getReview(id);
+export async function completeReview(id: string): Promise<void> {
+  const review = await getReview(id);
   if (!review) return;
-  update("reviews", id, {
-    status: "COMPLETE",
-    completed_at: nowIso(),
-    snapshot_json: JSON.stringify(reviewSnapshot(review.kind, review.period_start, review.period_end)),
-  });
+  await update("reviews", id, {
+        status: "COMPLETE",
+        completed_at: nowIso(),
+        snapshot_json: JSON.stringify(await reviewSnapshot(review.kind, review.period_start, review.period_end)),
+      });
 }
 
 export function reviewAnswers(review: Review): Record<string, string> {
@@ -166,7 +166,7 @@ export interface PillarDelta {
 
 export interface ReviewSnapshot {
   period: { start: DayString; end: DayString };
-  scores: ReturnType<typeof averageScores>;
+  scores: Awaited<ReturnType<typeof averageScores>>;
   pillars: PillarDelta[];
   sessionsCompleted: number;
   distanceM: number;
@@ -190,15 +190,15 @@ const KEY: Record<ScoredPillar, "body" | "business" | "character" | "finance" | 
   LEARNING: "learning",
 };
 
-export function reviewSnapshot(
+export async function reviewSnapshot(
   kind: ReviewKind,
   start: DayString,
   end: DayString,
-): ReviewSnapshot {
-  const rows = all<{ date: string; [k: string]: unknown }>(
-    "SELECT * FROM daily_scores WHERE date BETWEEN ? AND ? ORDER BY date",
-    [start, end],
-  );
+): Promise<ReviewSnapshot> {
+  const rows = await all<{ date: string; [k: string]: unknown }>(
+      "SELECT * FROM daily_scores WHERE date BETWEEN ? AND ? ORDER BY date",
+      [start, end],
+    );
 
   const pillars: PillarDelta[] = SCORED_PILLARS.map((pillar) => {
     const key = KEY[pillar];
@@ -223,40 +223,40 @@ export function reviewSnapshot(
     return { pillar, start: first, end: last, average, verdict };
   });
 
-  const mission = primaryMission();
+  const mission = await primaryMission();
 
   return {
     period: { start, end },
-    scores: averageScores(start, end),
+    scores: await averageScores(start, end),
     pillars,
-    sessionsCompleted: scalar(
-      "SELECT COUNT(*) AS v FROM workout_sessions WHERE date BETWEEN ? AND ? AND status IN ('COMPLETED','MODIFIED')",
-      [start, end],
-    ),
-    distanceM: scalar(
-      "SELECT COALESCE(SUM(distance_m), 0) AS v FROM runs WHERE date BETWEEN ? AND ?",
-      [start, end],
-    ),
-    tasksCompleted: scalar(
-      "SELECT COUNT(*) AS v FROM tasks WHERE status = 'COMPLETE' AND substr(completed_at, 1, 10) BETWEEN ? AND ?",
-      [start, end],
-    ),
-    mustWinsCompleted: scalar(
-      `SELECT COUNT(*) AS v FROM tasks
+    sessionsCompleted: await scalar(
+          "SELECT COUNT(*) AS v FROM workout_sessions WHERE date BETWEEN ? AND ? AND status IN ('COMPLETED','MODIFIED')",
+          [start, end],
+        ),
+    distanceM: await scalar(
+          "SELECT COALESCE(SUM(distance_m), 0) AS v FROM runs WHERE date BETWEEN ? AND ?",
+          [start, end],
+        ),
+    tasksCompleted: await scalar(
+          "SELECT COUNT(*) AS v FROM tasks WHERE status = 'COMPLETE' AND substr(completed_at, 1, 10) BETWEEN ? AND ?",
+          [start, end],
+        ),
+    mustWinsCompleted: await scalar(
+          `SELECT COUNT(*) AS v FROM tasks
         WHERE status = 'COMPLETE' AND priority = 'MUST_WIN'
           AND substr(completed_at, 1, 10) BETWEEN ? AND ?`,
-      [start, end],
-    ),
-    revenueCents: revenueBetween(start, end),
-    incomeCents: incomeBetween(start, end),
-    expensesCents: personalExpensesBetween(start, end),
-    netWorthCents: netWorthNow().netWorthCents,
-    promiseRate: promiseRate(Math.max(1, dayDiff(end, start) + 1), end).rate,
-    learningMinutes: scalar(
-      "SELECT COALESCE(SUM(minutes), 0) AS v FROM learning_items WHERE date BETWEEN ? AND ?",
-      [start, end],
-    ),
-    missionProgress: mission ? computeMissionProgress(mission, end).progressPct : null,
+          [start, end],
+        ),
+    revenueCents: await revenueBetween(start, end),
+    incomeCents: await incomeBetween(start, end),
+    expensesCents: await personalExpensesBetween(start, end),
+    netWorthCents: (await netWorthNow()).netWorthCents,
+    promiseRate: (await promiseRate(Math.max(1, dayDiff(end, start) + 1), end)).rate,
+    learningMinutes: await scalar(
+          "SELECT COALESCE(SUM(minutes), 0) AS v FROM learning_items WHERE date BETWEEN ? AND ?",
+          [start, end],
+        ),
+    missionProgress: mission ? (await computeMissionProgress(mission, end)).progressPct : null,
     scoredDays: rows.length,
   };
 }
@@ -271,16 +271,16 @@ export function storedSnapshot(review: Review): ReviewSnapshot | null {
 }
 
 /** Which reviews are outstanding right now. */
-export function outstandingReviews(day: DayString = today()) {
+export async function outstandingReviews(day: DayString = today()) {
   const out: Array<{ kind: ReviewKind; start: DayString; end: DayString; label: string }> = [];
 
   const yesterday = addDays(day, -1);
-  if (!findReview("DAILY", yesterday) || findReview("DAILY", yesterday)?.status !== "COMPLETE") {
+  if (!await findReview("DAILY", yesterday) || (await findReview("DAILY", yesterday))?.status !== "COMPLETE") {
     out.push({ kind: "DAILY", start: yesterday, end: yesterday, label: `Daily · ${yesterday}` });
   }
 
   const lastWeekStart = startOfWeek(addDays(day, -7));
-  const weekly = findReview("WEEKLY", lastWeekStart);
+  const weekly = await findReview("WEEKLY", lastWeekStart);
   if (!weekly || weekly.status !== "COMPLETE") {
     out.push({
       kind: "WEEKLY",
@@ -291,7 +291,7 @@ export function outstandingReviews(day: DayString = today()) {
   }
 
   const lastMonthStart = startOfMonth(addDays(startOfMonth(day), -1));
-  const monthly = findReview("MONTHLY", lastMonthStart);
+  const monthly = await findReview("MONTHLY", lastMonthStart);
   if (!monthly || monthly.status !== "COMPLETE") {
     out.push({
       kind: "MONTHLY",
@@ -309,8 +309,8 @@ function dayDiff(a: string, b: string): number {
 }
 
 /** Day 1 vs Day 90 comparison for the 90-day review. */
-export function ninetyDayComparison(start: DayString, end: DayString) {
-  const rows = scoreHistory(400, end).filter((r) => r.date >= start && r.date <= end);
+export async function ninetyDayComparison(start: DayString, end: DayString) {
+  const rows = (await scoreHistory(400, end)).filter((r) => r.date >= start && r.date <= end);
   const firstWindow = rows.slice(0, 7);
   const lastWindow = rows.slice(-7);
 

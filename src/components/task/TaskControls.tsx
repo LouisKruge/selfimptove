@@ -75,11 +75,11 @@ export function TaskMenu({ task }: { task: Task }) {
           />
           <div className="enter absolute right-0 top-6 z-20 w-52 border border-line-strong bg-panel py-1">
             {[
-              { label: "Today", fn: () => rescheduleTask(task.id, today()) },
-              { label: "Tomorrow", fn: () => rescheduleTask(task.id, addDays(today(), 1)) },
-              { label: "Next week", fn: () => rescheduleTask(task.id, addDays(today(), 7)) },
+              { label: "Today", fn: async () => await rescheduleTask(task.id, today()) },
+              { label: "Tomorrow", fn: async () => await rescheduleTask(task.id, addDays(today(), 1)) },
+              { label: "Next week", fn: async () => await rescheduleTask(task.id, addDays(today(), 7)) },
             ].map((item) => (
-              <MenuItem key={item.label} disabled={pending} onClick={() => run(item.fn)}>
+              <MenuItem key={item.label} disabled={pending} onClick={async () => await run(item.fn)}>
                 {item.label}
               </MenuItem>
             ))}
@@ -87,48 +87,48 @@ export function TaskMenu({ task }: { task: Task }) {
             {task.status !== "IN_PROGRESS" ? (
               <MenuItem
                 disabled={pending}
-                onClick={() => run(() => setTaskStatus(task.id, "IN_PROGRESS"))}
+                onClick={async () => await run(() => setTaskStatus(task.id, "IN_PROGRESS"))}
               >
                 Start
               </MenuItem>
             ) : null}
             {task.status !== "BLOCKED" ? (
-              <MenuItem disabled={pending} onClick={() => run(() => setTaskStatus(task.id, "BLOCKED"))}>
+              <MenuItem disabled={pending} onClick={async () => await run(() => setTaskStatus(task.id, "BLOCKED"))}>
                 Mark blocked
               </MenuItem>
             ) : (
-              <MenuItem disabled={pending} onClick={() => run(() => setTaskStatus(task.id, "TODO"))}>
+              <MenuItem disabled={pending} onClick={async () => await run(() => setTaskStatus(task.id, "TODO"))}>
                 Unblock
               </MenuItem>
             )}
-            <MenuItem disabled={pending} onClick={() => run(() => convertTaskToProject(task.id))}>
+            <MenuItem disabled={pending} onClick={async () => await run(() => convertTaskToProject(task.id))}>
               Convert to project
             </MenuItem>
             {task.delegated_to ? (
-              <MenuItem disabled={pending} onClick={() => run(() => undelegateTask(task.id))}>
+              <MenuItem disabled={pending} onClick={async () => await run(() => undelegateTask(task.id))}>
                 Take back
               </MenuItem>
             ) : (
               <MenuItem
                 disabled={pending}
-                onClick={() => {
+                onClick={async () => {
                   const to = window.prompt("Delegate to whom?");
-                  if (to && to.trim()) run(() => delegateTask(task.id, to.trim()));
+                  if (to && to.trim()) await run(() => delegateTask(task.id, to.trim()));
                 }}
               >
                 Delegate
               </MenuItem>
             )}
             <div className="my-1 border-t border-line" />
-            <MenuItem disabled={pending} onClick={() => run(() => setTaskStatus(task.id, "CANCELLED"))}>
+            <MenuItem disabled={pending} onClick={async () => await run(() => setTaskStatus(task.id, "CANCELLED"))}>
               Cancel
             </MenuItem>
             <MenuItem
               danger
               disabled={pending}
-              onClick={() => {
+              onClick={async () => {
                 if (window.confirm(`Delete “${task.title}”? This cannot be undone.`)) {
-                  run(() => deleteTask(task.id));
+                  await run(() => deleteTask(task.id));
                 }
               }}
             >

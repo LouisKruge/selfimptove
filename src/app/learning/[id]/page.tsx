@@ -23,11 +23,11 @@ export const dynamic = "force-dynamic";
 
 export default async function SkillPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const skill = getSkill(id);
+  const skill = await getSkill(id);
   if (!skill) notFound();
 
-  const view = skillViews().find((s) => s.id === id);
-  const items = learningForSkill(id);
+  const view = (await skillViews()).find((s) => s.id === id);
+  const items = await learningForSkill(id);
   const applied = items.filter((i) => i.applied === 1 || i.kind === "APPLICATION");
 
   return (

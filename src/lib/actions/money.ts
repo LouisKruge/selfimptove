@@ -62,8 +62,8 @@ export async function upsertBusiness(form: FormData): Promise<ActionResult> {
     avg_deal_cents: v.avg_deal ?? null,
     mrr_target_cents: v.mrr_target ?? null,
   };
-  if (v.id) update("businesses", v.id, values);
-  else insert("businesses", values);
+  if (v.id) await update("businesses", v.id, values);
+  else await insert("businesses", values);
   refresh("/business/strategy");
   return ok();
 }
@@ -94,30 +94,30 @@ export async function createLead(form: FormData): Promise<ActionResult<{ id: str
     return fail("Probability must be between 0 and 100.");
   }
 
-  const leadId = insert("leads", {
-    company: v.company,
-    contact_name: v.contact_name ?? null,
-    contact_email: v.contact_email ?? null,
-    contact_phone: v.contact_phone ?? null,
-    source: v.source ?? null,
-    stage: v.stage,
-    potential_cents: v.potential ?? 0,
-    probability: v.probability ?? defaultProbability(v.stage),
-    next_action: v.next_action ?? null,
-    next_action_date: v.next_action_date ?? null,
-    notes: v.notes ?? null,
-    business_id: v.business_id ?? null,
-  });
+  const leadId = await insert("leads", {
+      company: v.company,
+      contact_name: v.contact_name ?? null,
+      contact_email: v.contact_email ?? null,
+      contact_phone: v.contact_phone ?? null,
+      source: v.source ?? null,
+      stage: v.stage,
+      potential_cents: v.potential ?? 0,
+      probability: v.probability ?? defaultProbability(v.stage),
+      next_action: v.next_action ?? null,
+      next_action_date: v.next_action_date ?? null,
+      notes: v.notes ?? null,
+      business_id: v.business_id ?? null,
+    });
 
   // Stage history is the only source of conversion rates, so it starts here.
-  insert("lead_stage_events", {
-    lead_id: leadId,
-    from_stage: null,
-    to_stage: v.stage,
-    date: today(),
-  });
+  await insert("lead_stage_events", {
+        lead_id: leadId,
+        from_stage: null,
+        to_stage: v.stage,
+        date: today(),
+      });
 
-  recomputeDayScore(today());
+  await recomputeDayScore(today());
   refresh("/business/sales", `/business/sales/${leadId}`);
   return ok({ id: leadId });
 }
@@ -127,14 +127,14 @@ export async function updateLead(form: FormData): Promise<ActionResult> {
   if (!parsed.ok) return parsed.result;
   const { id: leadId, potential, stage: nextStage, ...rest } = parsed.value;
 
-  const existing = get<{ stage: string }>("SELECT stage FROM leads WHERE id = ?", [leadId]);
+  const existing = await get<{ stage: string }>("SELECT stage FROM leads WHERE id = ?", [leadId]);
   if (!existing) return fail("Lead not found.");
 
-  update("leads", leadId, {
-    ...rest,
-    potential_cents: potential,
-    stage: nextStage,
-  });
+  await update("leads", leadId, {
+        ...rest,
+        potential_cents: potential,
+        stage: nextStage,
+      });
 
   if (nextStage && nextStage !== existing.stage) {
     await recordStageMove(leadId, existing.stage, nextStage);
@@ -147,10 +147,10 @@ export async function moveLeadStage(leadId: string, nextStage: string): Promise<
   const parsed = parseWith(z.object({ id, stage }), { id: leadId, stage: nextStage });
   if (!parsed.ok) return parsed.result;
 
-  const existing = get<{ stage: string; potential_cents: number; company: string; business_id: string | null }>(
-    "SELECT stage, potential_cents, company, business_id FROM leads WHERE id = ?",
-    [leadId],
-  );
+  const existing = await get<{ stage: string; potential_cents: number; company: string; business_id: string | null }>(
+      "SELECT stage, potential_cents, company, business_id FROM leads WHERE id = ?",
+      [leadId],
+    );
   if (!existing) return fail("Lead not found.");
   if (existing.stage === parsed.value.stage) return ok();
 
@@ -160,44 +160,44 @@ export async function moveLeadStage(leadId: string, nextStage: string): Promise<
 }
 
 async function recordStageMove(leadId: string, from: string, to: string) {
-  const lead = get<{ company: string; potential_cents: number; business_id: string | null }>(
-    "SELECT company, potential_cents, business_id FROM leads WHERE id = ?",
-    [leadId],
-  );
+  const lead = await get<{ company: string; potential_cents: number; business_id: string | null }>(
+      "SELECT company, potential_cents, business_id FROM leads WHERE id = ?",
+      [leadId],
+    );
 
-  update("leads", leadId, {
-    stage: to,
-    probability: defaultProbability(to),
-    last_contact_date: today(),
-    closed_at: to === "LOST" || to === "RETAINED" ? nowIso() : null,
-  });
+  await update("leads", leadId, {
+        stage: to,
+        probability: defaultProbability(to),
+        last_contact_date: today(),
+        closed_at: to === "LOST" || to === "RETAINED" ? nowIso() : null,
+      });
 
-  insert("lead_stage_events", {
-    lead_id: leadId,
-    from_stage: from,
-    to_stage: to,
-    date: today(),
-  });
+  await insert("lead_stage_events", {
+        lead_id: leadId,
+        from_stage: from,
+        to_stage: to,
+        date: today(),
+      });
 
   // Reaching CUSTOMER creates the customer record if it does not exist.
   if (to === "CUSTOMER" && lead) {
-    const existing = get<{ id: string }>("SELECT id FROM customers WHERE lead_id = ?", [leadId]);
+    const existing = await get<{ id: string }>("SELECT id FROM customers WHERE lead_id = ?", [leadId]);
     if (!existing) {
-      insert("customers", {
-        lead_id: leadId,
-        business_id: lead.business_id,
-        name: lead.company,
-        status: "ACTIVE",
-        mrr_cents: lead.potential_cents,
-        started_at: today(),
-      });
+      await insert("customers", {
+                lead_id: leadId,
+                business_id: lead.business_id,
+                name: lead.company,
+                status: "ACTIVE",
+                mrr_cents: lead.potential_cents,
+                started_at: today(),
+              });
     }
   }
-  recomputeDayScore(today());
+  await recomputeDayScore(today());
 }
 
 export async function deleteLead(leadId: string): Promise<ActionResult> {
-  remove("leads", leadId);
+  await remove("leads", leadId);
   refresh("/business/sales");
   return ok();
 }
@@ -233,16 +233,16 @@ export async function upsertCustomer(form: FormData): Promise<ActionResult> {
     notes: v.notes ?? null,
     business_id: v.business_id ?? null,
   };
-  if (v.id) update("customers", v.id, values);
-  else insert("customers", values);
+  if (v.id) await update("customers", v.id, values);
+  else await insert("customers", values);
 
-  recomputeDayScore(today());
+  await recomputeDayScore(today());
   refresh("/business/revenue");
   return ok();
 }
 
 export async function deleteCustomer(customerId: string): Promise<ActionResult> {
-  remove("customers", customerId);
+  await remove("customers", customerId);
   refresh("/business/revenue");
   return ok();
 }
@@ -266,37 +266,37 @@ export async function logRevenue(form: FormData): Promise<ActionResult> {
   const v = parsed.value;
   if (v.amount < 0) return fail("Revenue cannot be negative.");
 
-  insert("revenue_entries", {
-    date: v.date,
-    amount_cents: v.amount,
-    kind: v.kind,
-    description: v.description ?? null,
-    customer_id: v.customer_id ?? null,
-    business_id: v.business_id ?? null,
-    received: 1,
-  });
+  await insert("revenue_entries", {
+        date: v.date,
+        amount_cents: v.amount,
+        kind: v.kind,
+        description: v.description ?? null,
+        customer_id: v.customer_id ?? null,
+        business_id: v.business_id ?? null,
+        received: 1,
+      });
 
   // Money earned by the business is money that reaches the person, so the
   // finance ledger stays in step unless the user opts out.
   if (v.mirror_income) {
-    insert("income_entries", {
-      date: v.date,
-      amount_cents: v.amount,
-      source: "BUSINESS",
-      description: v.description ?? "Business revenue",
-      recurring: v.kind === "RECURRING" ? 1 : 0,
-    });
+    await insert("income_entries", {
+            date: v.date,
+            amount_cents: v.amount,
+            source: "BUSINESS",
+            description: v.description ?? "Business revenue",
+            recurring: v.kind === "RECURRING" ? 1 : 0,
+          });
   }
 
-  recomputeDayScore(v.date);
+  await recomputeDayScore(v.date);
   refresh("/business/revenue", "/finance/cash-flow");
   return ok();
 }
 
 export async function deleteRevenue(entryId: string): Promise<ActionResult> {
-  const row = get<{ date: string }>("SELECT date FROM revenue_entries WHERE id = ?", [entryId]);
-  remove("revenue_entries", entryId);
-  if (row) recomputeDayScore(row.date);
+  const row = await get<{ date: string }>("SELECT date FROM revenue_entries WHERE id = ?", [entryId]);
+  await remove("revenue_entries", entryId);
+  if (row) await recomputeDayScore(row.date);
   refresh("/business/revenue");
   return ok();
 }
@@ -317,20 +317,20 @@ export async function logBusinessExpense(form: FormData): Promise<ActionResult> 
   const v = parsed.value;
   if (v.amount < 0) return fail("Expenses cannot be negative.");
 
-  insert("business_expenses", {
-    date: v.date,
-    amount_cents: v.amount,
-    category: v.category ?? null,
-    description: v.description ?? null,
-    recurring: v.recurring ? 1 : 0,
-    business_id: v.business_id ?? null,
-  });
+  await insert("business_expenses", {
+        date: v.date,
+        amount_cents: v.amount,
+        category: v.category ?? null,
+        description: v.description ?? null,
+        recurring: v.recurring ? 1 : 0,
+        business_id: v.business_id ?? null,
+      });
   refresh("/business/revenue");
   return ok();
 }
 
 export async function deleteBusinessExpense(entryId: string): Promise<ActionResult> {
-  remove("business_expenses", entryId);
+  await remove("business_expenses", entryId);
   refresh("/business/revenue");
   return ok();
 }
@@ -356,15 +356,15 @@ export async function upsertAccount(form: FormData): Promise<ActionResult> {
     balance_cents: v.balance ?? 0,
     include_in_cash: v.include_in_cash ? 1 : 0,
   };
-  if (v.id) update("accounts", v.id, values);
-  else insert("accounts", values);
-  recomputeDayScore(today());
+  if (v.id) await update("accounts", v.id, values);
+  else await insert("accounts", values);
+  await recomputeDayScore(today());
   refresh("/finance/cash-flow", "/finance/net-worth");
   return ok();
 }
 
 export async function deleteAccount(accountId: string): Promise<ActionResult> {
-  remove("accounts", accountId);
+  await remove("accounts", accountId);
   refresh("/finance/cash-flow");
   return ok();
 }
@@ -388,26 +388,26 @@ export async function logExpense(form: FormData): Promise<ActionResult> {
   const v = parsed.value;
   if (v.amount < 0) return fail("Expenses cannot be negative.");
 
-  insert("personal_expenses", {
-    date: v.date,
-    amount_cents: v.amount,
-    category: v.category ?? "OTHER",
-    description: v.description ?? null,
-    essential: v.essential ? 1 : 0,
-    recurring: v.recurring ? 1 : 0,
-  });
+  await insert("personal_expenses", {
+        date: v.date,
+        amount_cents: v.amount,
+        category: v.category ?? "OTHER",
+        description: v.description ?? null,
+        essential: v.essential ? 1 : 0,
+        recurring: v.recurring ? 1 : 0,
+      });
 
   if (v.account_id) {
-    const account = get<{ balance_cents: number }>(
-      "SELECT balance_cents FROM accounts WHERE id = ?",
-      [v.account_id],
-    );
+    const account = await get<{ balance_cents: number }>(
+          "SELECT balance_cents FROM accounts WHERE id = ?",
+          [v.account_id],
+        );
     if (account) {
-      update("accounts", v.account_id, { balance_cents: account.balance_cents - v.amount });
+      await update("accounts", v.account_id, { balance_cents: account.balance_cents - v.amount });
     }
   }
 
-  recomputeDayScore(v.date);
+  await recomputeDayScore(v.date);
   refresh("/finance/cash-flow");
   return ok();
 }
@@ -428,41 +428,41 @@ export async function logIncome(form: FormData): Promise<ActionResult> {
   const v = parsed.value;
   if (v.amount < 0) return fail("Income cannot be negative.");
 
-  insert("income_entries", {
-    date: v.date,
-    amount_cents: v.amount,
-    source: v.source ?? "OTHER",
-    description: v.description ?? null,
-    recurring: v.recurring ? 1 : 0,
-  });
+  await insert("income_entries", {
+        date: v.date,
+        amount_cents: v.amount,
+        source: v.source ?? "OTHER",
+        description: v.description ?? null,
+        recurring: v.recurring ? 1 : 0,
+      });
 
   if (v.account_id) {
-    const account = get<{ balance_cents: number }>(
-      "SELECT balance_cents FROM accounts WHERE id = ?",
-      [v.account_id],
-    );
+    const account = await get<{ balance_cents: number }>(
+          "SELECT balance_cents FROM accounts WHERE id = ?",
+          [v.account_id],
+        );
     if (account) {
-      update("accounts", v.account_id, { balance_cents: account.balance_cents + v.amount });
+      await update("accounts", v.account_id, { balance_cents: account.balance_cents + v.amount });
     }
   }
 
-  recomputeDayScore(v.date);
+  await recomputeDayScore(v.date);
   refresh("/finance/cash-flow");
   return ok();
 }
 
 export async function deleteExpense(entryId: string): Promise<ActionResult> {
-  const row = get<{ date: string }>("SELECT date FROM personal_expenses WHERE id = ?", [entryId]);
-  remove("personal_expenses", entryId);
-  if (row) recomputeDayScore(row.date);
+  const row = await get<{ date: string }>("SELECT date FROM personal_expenses WHERE id = ?", [entryId]);
+  await remove("personal_expenses", entryId);
+  if (row) await recomputeDayScore(row.date);
   refresh("/finance/cash-flow");
   return ok();
 }
 
 export async function deleteIncome(entryId: string): Promise<ActionResult> {
-  const row = get<{ date: string }>("SELECT date FROM income_entries WHERE id = ?", [entryId]);
-  remove("income_entries", entryId);
-  if (row) recomputeDayScore(row.date);
+  const row = await get<{ date: string }>("SELECT date FROM income_entries WHERE id = ?", [entryId]);
+  await remove("income_entries", entryId);
+  if (row) await recomputeDayScore(row.date);
   refresh("/finance/cash-flow");
   return ok();
 }
@@ -508,28 +508,28 @@ export async function upsertScheduled(form: FormData): Promise<ActionResult> {
     debt_id: v.debt_id ?? null,
     active: 1,
   };
-  if (v.id) update("scheduled_cash_items", v.id, values);
-  else insert("scheduled_cash_items", values);
+  if (v.id) await update("scheduled_cash_items", v.id, values);
+  else await insert("scheduled_cash_items", values);
 
-  recomputeDayScore(today());
+  await recomputeDayScore(today());
   refresh("/finance/cash-flow");
   return ok();
 }
 
 export async function toggleScheduled(itemId: string): Promise<ActionResult> {
-  const row = get<{ active: number }>("SELECT active FROM scheduled_cash_items WHERE id = ?", [
-    itemId,
-  ]);
+  const row = await get<{ active: number }>("SELECT active FROM scheduled_cash_items WHERE id = ?", [
+      itemId,
+    ]);
   if (!row) return fail("Scheduled item not found.");
-  update("scheduled_cash_items", itemId, { active: row.active ? 0 : 1 });
-  recomputeDayScore(today());
+  await update("scheduled_cash_items", itemId, { active: row.active ? 0 : 1 });
+  await recomputeDayScore(today());
   refresh("/finance/cash-flow");
   return ok();
 }
 
 export async function deleteScheduled(itemId: string): Promise<ActionResult> {
-  remove("scheduled_cash_items", itemId);
-  recomputeDayScore(today());
+  await remove("scheduled_cash_items", itemId);
+  await recomputeDayScore(today());
   refresh("/finance/cash-flow");
   return ok();
 }
@@ -564,10 +564,10 @@ export async function upsertDebt(form: FormData): Promise<ActionResult> {
     due_day: v.due_day ?? null,
     status: (v.balance ?? 0) === 0 ? "SETTLED" : "ACTIVE",
   };
-  if (v.id) update("debts", v.id, values);
-  else insert("debts", values);
+  if (v.id) await update("debts", v.id, values);
+  else await insert("debts", values);
 
-  recomputeDayScore(today());
+  await recomputeDayScore(today());
   refresh("/finance/debt", "/finance/net-worth");
   return ok();
 }
@@ -581,32 +581,32 @@ export async function logDebtPayment(form: FormData): Promise<ActionResult> {
   const v = parsed.value;
   if (v.amount <= 0) return fail("A payment must be greater than zero.");
 
-  const debt = get<{ balance_cents: number }>("SELECT balance_cents FROM debts WHERE id = ?", [
-    v.debt_id,
-  ]);
+  const debt = await get<{ balance_cents: number }>("SELECT balance_cents FROM debts WHERE id = ?", [
+      v.debt_id,
+    ]);
   if (!debt) return fail("Debt not found.");
 
   const balanceAfter = Math.max(0, debt.balance_cents - v.amount);
-  insert("debt_payments", {
-    debt_id: v.debt_id,
-    date: v.date,
-    amount_cents: v.amount,
-    balance_after: balanceAfter,
-  });
-  update("debts", v.debt_id, {
-    balance_cents: balanceAfter,
-    status: balanceAfter === 0 ? "SETTLED" : "ACTIVE",
-    settled_at: balanceAfter === 0 ? nowIso() : null,
-  });
+  await insert("debt_payments", {
+        debt_id: v.debt_id,
+        date: v.date,
+        amount_cents: v.amount,
+        balance_after: balanceAfter,
+      });
+  await update("debts", v.debt_id, {
+        balance_cents: balanceAfter,
+        status: balanceAfter === 0 ? "SETTLED" : "ACTIVE",
+        settled_at: balanceAfter === 0 ? nowIso() : null,
+      });
 
-  recomputeDayScore(v.date);
+  await recomputeDayScore(v.date);
   refresh("/finance/debt", "/finance/net-worth");
   return ok();
 }
 
 export async function deleteDebt(debtId: string): Promise<ActionResult> {
-  remove("debts", debtId);
-  recomputeDayScore(today());
+  await remove("debts", debtId);
+  await recomputeDayScore(today());
   refresh("/finance/debt");
   return ok();
 }
@@ -641,8 +641,8 @@ export async function upsertInvestment(form: FormData): Promise<ActionResult> {
     current_cents: v.current_value ?? v.cost_basis ?? 0,
     notes: v.notes ?? null,
   };
-  if (v.id) update("investments", v.id, values);
-  else insert("investments", values);
+  if (v.id) await update("investments", v.id, values);
+  else await insert("investments", values);
 
   refresh("/finance/investments", "/finance/net-worth");
   return ok();
@@ -662,29 +662,29 @@ export async function logContribution(form: FormData): Promise<ActionResult> {
   const v = parsed.value;
   if (v.amount <= 0) return fail("A contribution must be greater than zero.");
 
-  const investment = get<{ cost_basis_cents: number; current_cents: number }>(
-    "SELECT cost_basis_cents, current_cents FROM investments WHERE id = ?",
-    [v.investment_id],
-  );
+  const investment = await get<{ cost_basis_cents: number; current_cents: number }>(
+      "SELECT cost_basis_cents, current_cents FROM investments WHERE id = ?",
+      [v.investment_id],
+    );
   if (!investment) return fail("Investment not found.");
 
-  insert("investment_contributions", {
-    investment_id: v.investment_id,
-    date: v.date,
-    amount_cents: v.amount,
-    note: v.note ?? null,
-  });
-  update("investments", v.investment_id, {
-    cost_basis_cents: investment.cost_basis_cents + v.amount,
-    current_cents: investment.current_cents + v.amount,
-  });
+  await insert("investment_contributions", {
+        investment_id: v.investment_id,
+        date: v.date,
+        amount_cents: v.amount,
+        note: v.note ?? null,
+      });
+  await update("investments", v.investment_id, {
+        cost_basis_cents: investment.cost_basis_cents + v.amount,
+        current_cents: investment.current_cents + v.amount,
+      });
 
   refresh("/finance/investments", "/finance/net-worth");
   return ok();
 }
 
 export async function deleteInvestment(investmentId: string): Promise<ActionResult> {
-  remove("investments", investmentId);
+  await remove("investments", investmentId);
   refresh("/finance/investments");
   return ok();
 }
@@ -704,14 +704,14 @@ export async function upsertAsset(form: FormData): Promise<ActionResult> {
   if (!parsed.ok) return parsed.result;
   const v = parsed.value;
   const values = { name: v.name, kind: v.kind, value_cents: v.value ?? 0 };
-  if (v.id) update("assets", v.id, values);
-  else insert("assets", values);
+  if (v.id) await update("assets", v.id, values);
+  else await insert("assets", values);
   refresh("/finance/net-worth");
   return ok();
 }
 
 export async function deleteAsset(assetId: string): Promise<ActionResult> {
-  remove("assets", assetId);
+  await remove("assets", assetId);
   refresh("/finance/net-worth");
   return ok();
 }
@@ -719,7 +719,7 @@ export async function deleteAsset(assetId: string): Promise<ActionResult> {
 /** Freezes today's balance sheet into the net-worth history. */
 export async function snapshotNetWorth(): Promise<ActionResult> {
   const day = today();
-  const now = netWorthNow();
+  const now = await netWorthNow();
   const values = {
     date: day,
     cash_cents: now.cashCents,
@@ -730,9 +730,9 @@ export async function snapshotNetWorth(): Promise<ActionResult> {
     liabilities_cents: now.liabilitiesCents,
     net_worth_cents: now.netWorthCents,
   };
-  const existing = get<{ id: string }>("SELECT id FROM net_worth_snapshots WHERE date = ?", [day]);
-  if (existing) update("net_worth_snapshots", existing.id, values);
-  else insert("net_worth_snapshots", values);
+  const existing = await get<{ id: string }>("SELECT id FROM net_worth_snapshots WHERE date = ?", [day]);
+  if (existing) await update("net_worth_snapshots", existing.id, values);
+  else await insert("net_worth_snapshots", values);
   refresh("/finance/net-worth");
   return ok();
 }

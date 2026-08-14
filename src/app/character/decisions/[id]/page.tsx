@@ -32,13 +32,13 @@ export default async function DecisionDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const d = decisionView(id);
+  const d = await decisionView(id);
   if (!d) notFound();
 
-  const notes = all<{ id: string; title: string | null; body: string }>(
-    "SELECT id, title, body FROM notes WHERE entity_type = 'decision' AND entity_id = ?",
-    [id],
-  );
+  const notes = await all<{ id: string; title: string | null; body: string }>(
+      "SELECT id, title, body FROM notes WHERE entity_type = 'decision' AND entity_id = ?",
+      [id],
+    );
 
   return (
     <div className="space-y-10">

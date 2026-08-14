@@ -2,7 +2,7 @@
   "name": "command-os",
   "version": "1.0.0",
   "private": true,
-  "description": "COMMAND — a private, data-driven personal operating system.",
+  "description": "COMMAND \u2014 a private, data-driven personal operating system.",
   "scripts": {
     "predev": "node scripts/gen-schema.mjs",
     "dev": "next dev",
@@ -10,14 +10,15 @@
     "build": "next build",
     "start": "next start",
     "gen:schema": "node scripts/gen-schema.mjs",
-    "seed": "node scripts/gen-schema.mjs && tsx --conditions=react-server scripts/seed.ts",
-    "reset": "node scripts/gen-schema.mjs && tsx --conditions=react-server scripts/seed.ts --reset",
+    "seed": "node scripts/gen-schema.mjs && tsx --conditions=react-server scripts/seed.mts",
+    "reset": "node scripts/gen-schema.mjs && tsx --conditions=react-server scripts/seed.mts --reset",
     "typecheck": "node scripts/gen-schema.mjs && tsc --noEmit",
     "test": "node scripts/gen-schema.mjs && tsx --conditions=react-server --test \"tests/*.test.ts\" \"tests/*.test.mts\"",
-    "demo": "node scripts/gen-schema.mjs && tsx --conditions=react-server scripts/seed.ts --reset --demo"
+    "demo": "node scripts/gen-schema.mjs && tsx --conditions=react-server scripts/seed.mts --reset --demo",
+    "postbuild": "node scripts/seed-if-remote.mjs"
   },
   "dependencies": {
-    "better-sqlite3": "^11.10.0",
+    "@libsql/client": "^0.17.4",
     "next": "^16.3.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -26,7 +27,6 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.13",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.15.3",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",

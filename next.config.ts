@@ -1,11 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["better-sqlite3"],
+  // The libSQL client ships optional native bindings for local file access.
+  // Keeping it external stops the bundler from trying to trace them.
+  serverExternalPackages: ["@libsql/client", "libsql"],
   typedRoutes: false,
-  experimental: {
-    optimizePackageImports: [],
-  },
 };
 
 export default nextConfig;

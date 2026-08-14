@@ -26,20 +26,20 @@ export const dynamic = "force-dynamic";
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const project = projectView(id);
+  const project = await projectView(id);
   if (!project) notFound();
 
   const day = today();
-  const mission = project.mission_id ? getMission(project.mission_id) : undefined;
+  const mission = project.mission_id ? await getMission(project.mission_id) : undefined;
   const openTasks = project.tasks.filter(
     (t) => t.status !== "COMPLETE" && t.status !== "CANCELLED",
   );
   const doneTasks = project.tasks.filter((t) => t.status === "COMPLETE");
 
-  const missions = listMissions()
+  const missions = (await listMissions())
     .filter((m) => m.status === "ACTIVE")
     .map((m) => ({ value: m.id, label: m.title }));
-  const goals = listGoals({ status: "ACTIVE" }).map((g) => ({ value: g.id, label: g.title }));
+  const goals = (await listGoals({ status: "ACTIVE" })).map((g) => ({ value: g.id, label: g.title }));
 
   return (
     <div className="space-y-10">

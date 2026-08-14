@@ -17,16 +17,12 @@ const dir = mkdtempSync(join(tmpdir(), "command-test-"));
 process.env.COMMAND_DB_PATH = join(dir, "test.db");
 process.env.COMMAND_TZ = "UTC";
 
-const { db } = await import("@/lib/db");
+const { closeDatabase, get: dbGet } = await import("@/lib/db");
 const { insert } = await import("@/lib/db/repo");
 const { today, addDays } = await import("@/lib/core/date");
 
-after(() => {
-  try {
-    db().close();
-  } catch {
-    /* already closed */
-  }
+after(async () => {
+  await closeDatabase();
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -37,67 +33,69 @@ let benchId = "";
 let squatId = "";
 let workoutId = "";
 
-before(() => {
-  benchId = insert("exercises", {
-    name: "Barbell Bench Press",
-    category: "STRENGTH",
-    modality: "WEIGHT_REPS",
-    muscle_group: "CHEST",
-    is_compound: 1,
-    default_rest_sec: 150,
-    progression_rule: "DOUBLE_PROGRESSION",
-    increment_kg: 2.5,
-    archived: 0,
-  });
-  squatId = insert("exercises", {
-    name: "Back Squat",
-    category: "STRENGTH",
-    modality: "WEIGHT_REPS",
-    muscle_group: "LEGS",
-    is_compound: 1,
-    default_rest_sec: 180,
-    progression_rule: "DOUBLE_PROGRESSION",
-    increment_kg: 2.5,
-    archived: 0,
-  });
-  workoutId = insert("workouts", {
-    name: "PUSH A",
-    type: "STRENGTH",
-    focus: "Chest",
-    est_minutes: 60,
-    archived: 0,
-  });
-  insert("workout_exercises", {
-    workout_id: workoutId,
-    exercise_id: benchId,
-    sort_order: 0,
-    target_sets: 3,
-    rep_min: 8,
-    rep_max: 10,
-    target_weight_kg: 90,
-    rest_sec: 150,
-  });
-  insert("seasons", {
-    name: "TEST",
-    start_date: addDays(DAY, -30),
-    status: "ACTIVE",
-    weight_body: 25,
-    weight_business: 30,
-    weight_character: 25,
-    weight_finance: 10,
-    weight_learning: 10,
-  });
+before(async () => {
+  benchId = await insert("exercises", {
+      name: "Barbell Bench Press",
+      category: "STRENGTH",
+      modality: "WEIGHT_REPS",
+      muscle_group: "CHEST",
+      is_compound: 1,
+      default_rest_sec: 150,
+      progression_rule: "DOUBLE_PROGRESSION",
+      increment_kg: 2.5,
+      archived: 0,
+    });
+  squatId = await insert("exercises", {
+      name: "Back Squat",
+      category: "STRENGTH",
+      modality: "WEIGHT_REPS",
+      muscle_group: "LEGS",
+      is_compound: 1,
+      default_rest_sec: 180,
+      progression_rule: "DOUBLE_PROGRESSION",
+      increment_kg: 2.5,
+      archived: 0,
+    });
+  workoutId = await insert("workouts", {
+      name: "PUSH A",
+      type: "STRENGTH",
+      focus: "Chest",
+      est_minutes: 60,
+      archived: 0,
+    });
+  await insert("workout_exercises", {
+        workout_id: workoutId,
+        exercise_id: benchId,
+        sort_order: 0,
+        target_sets: 3,
+        rep_min: 8,
+        rep_max: 10,
+        target_weight_kg: 90,
+        rest_sec: 150,
+      });
+  await insert("seasons", {
+        name: "TEST",
+        start_date: addDays(DAY, -30),
+        status: "ACTIVE",
+        weight_body: 25,
+        weight_business: 30,
+        weight_character: 25,
+        weight_finance: 10,
+        weight_learning: 10,
+      });
 });
 
 /* -------------------------------------------------------------- database */
 
 describe("database", () => {
-  test("schema applies and enforces its constraints", () => {
-    const conn = db();
-    assert.equal(conn.pragma("foreign_keys", { simple: true }), 1);
+  test("schema applies and enforces its constraints", async () => {
+    const fk = await dbGet<{ foreign_keys: number }>("PRAGMA foreign_keys");
+    assert.equal(fk?.foreign_keys, 1);
 
     // RPE is bounded 1–10 by a CHECK constraint.
-    assert.throws(() =>
+    // assert.rejects, not assert.throws: the write is async now, and a rejected
+    // promise is not a thrown exception. assert.throws would pass regardless.
+    await assert.rejects(() =>
       insert("workout_sets", {
         session_exercise_id: "x",
         session_id: "x",
@@ -110,8 +108,8 @@ describe("database", () => {
     );
   });
 
-  test("pillar weights must total 100", () => {
-    assert.throws(() =>
+  test("pillar weights must total 100", async () => {
+    await assert.rejects(() =>
       insert("seasons", {
         name: "BROKEN",
         start_date: DAY,
@@ -143,7 +141,7 @@ describe("training", () => {
     sessionId = result.data.id;
 
     const { sessionDetail } = await import("@/lib/services/body");
-    const detail = sessionDetail(sessionId);
+    const detail = await sessionDetail(sessionId);
     assert.ok(detail);
     assert.equal(detail.exercises.length, 1);
     assert.equal(detail.exercises[0].sessionExercise.target_weight_kg, 90);
@@ -154,7 +152,7 @@ describe("training", () => {
   test("logging a set rejects an empty entry and accepts a real one", async () => {
     const { logSet } = await import("@/lib/actions/training");
     const { sessionDetail } = await import("@/lib/services/body");
-    const sx = sessionDetail(sessionId)!.exercises[0].sessionExercise;
+    const sx = (await sessionDetail(sessionId))!.exercises[0].sessionExercise;
 
     const empty = new FormData();
     empty.set("session_exercise_id", sx.id);
@@ -172,7 +170,7 @@ describe("training", () => {
       assert.equal(ok.ok, true);
     }
 
-    const after = sessionDetail(sessionId)!;
+    const after = (await sessionDetail(sessionId))!;
     assert.equal(after.completedSets, 3);
     assert.equal(after.volumeKg, 2700);
     // Logging a set moves a planned session into progress.
@@ -203,7 +201,7 @@ describe("training", () => {
     assert.equal(result.ok, true);
     if (!result.ok) return;
 
-    const detail = sessionDetail(result.data.id)!;
+    const detail = (await sessionDetail(result.data.id))!;
     const first = detail.exercises[0];
     assert.equal(first.progression.source, "PROGRESSION");
     // 3 × 10 at 90kg cleared the 8–10 range, so the load moves up one increment.
@@ -223,7 +221,7 @@ describe("training", () => {
     assert.equal(created.ok, true);
     if (!created.ok) return;
 
-    const sx = sessionDetail(created.data.id)!.exercises[0].sessionExercise;
+    const sx = (await sessionDetail(created.data.id))!.exercises[0].sessionExercise;
     for (const reps of [9, 9, 9]) {
       const set = new FormData();
       set.set("session_exercise_id", sx.id);
@@ -249,7 +247,7 @@ describe("training", () => {
 
   test("exercise history reflects every logged session", async () => {
     const { exerciseHistory } = await import("@/lib/services/body");
-    const history = exerciseHistory(benchId)!;
+    const history = (await exerciseHistory(benchId))!;
     assert.equal(history.totalSessions, 2);
     assert.equal(history.bestWeightKg, 95);
     assert.equal(history.bestVolumeKg, 2700);
@@ -258,7 +256,7 @@ describe("training", () => {
 
   test("an exercise never trained reports nothing rather than zero", async () => {
     const { exerciseHistory } = await import("@/lib/services/body");
-    const history = exerciseHistory(squatId)!;
+    const history = (await exerciseHistory(squatId))!;
     assert.equal(history.totalSessions, 0);
     assert.equal(history.bestWeightKg, null);
     assert.equal(history.bestE1RM, null);
@@ -282,7 +280,7 @@ describe("tasks", () => {
       assert.equal(result.ok, true);
     }
 
-    const day = bigThree(DAY);
+    const day = await bigThree(DAY);
     assert.equal(day.mustWin?.title, "Second must-win");
     assert.equal(day.all.filter((t) => t.priority === "MUST_WIN").length, 1);
   });
@@ -291,9 +289,9 @@ describe("tasks", () => {
     const { toggleTask } = await import("@/lib/actions/plan");
     const { bigThree } = await import("@/lib/services/core");
 
-    const mustWin = bigThree(DAY).mustWin!;
+    const mustWin = (await bigThree(DAY)).mustWin!;
     await toggleTask(mustWin.id);
-    assert.equal(bigThree(DAY).mustWin?.status, "COMPLETE");
+    assert.equal((await bigThree(DAY)).mustWin?.status, "COMPLETE");
   });
 });
 
@@ -303,16 +301,16 @@ describe("scoring", () => {
   test("a day with logged work scores, an empty day does not", async () => {
     const { recomputeDayScore, storedScore } = await import("@/lib/services/scores");
 
-    recomputeDayScore(DAY);
-    const scored = storedScore(DAY);
+    await recomputeDayScore(DAY);
+    const scored = await storedScore(DAY);
     assert.ok(scored);
     assert.notEqual(scored.body, null, "training was logged, so body must score");
     assert.notEqual(scored.business, null, "a must-win existed, so business must score");
 
     // A day the user never touched is not a failed day — it is an unknown one.
     const emptyDay = addDays(DAY, -25);
-    recomputeDayScore(emptyDay);
-    const empty = storedScore(emptyDay)!;
+    await recomputeDayScore(emptyDay);
+    const empty = (await storedScore(emptyDay))!;
     assert.equal(empty.body, null);
     assert.equal(empty.business, null);
     assert.equal(empty.character, null);
@@ -323,7 +321,7 @@ describe("scoring", () => {
 
   test("the score breakdown explains itself", async () => {
     const { computeDayScore } = await import("@/lib/services/scores");
-    const result = computeDayScore(DAY);
+    const result = await computeDayScore(DAY);
     const training = result.body.components.find((c) => c.key === "training");
     assert.ok(training);
     assert.match(training.detail, /session/);
@@ -352,7 +350,7 @@ describe("business", () => {
     await moveLeadStage(ids[0], "CONTACTED");
     await moveLeadStage(ids[1], "CONTACTED");
 
-    const p = pipeline();
+    const p = await pipeline();
     const first = p.conversions[0];
     assert.equal(first.from, "PROSPECT");
     assert.equal(first.rate, 50);
@@ -374,7 +372,7 @@ describe("business", () => {
     if (!created.ok) return;
 
     await moveLeadStage(created.data.id, "CUSTOMER");
-    const customer = listCustomers().find((c) => c.name === "Closes Fast");
+    const customer = (await listCustomers()).find((c) => c.name === "Closes Fast");
     assert.ok(customer);
     assert.equal(customer.mrr_cents, 800000);
     assert.equal(customer.status, "ACTIVE");
@@ -394,7 +392,7 @@ describe("finance", () => {
     account.set("balance", "5000");
     account.set("include_in_cash", "on");
     assert.equal((await upsertAccount(account)).ok, true);
-    assert.equal(cashOnHandCents(), 500000);
+    assert.equal(await cashOnHandCents(), 500000);
 
     const rent = new FormData();
     rent.set("name", "Rent");
@@ -404,7 +402,7 @@ describe("finance", () => {
     rent.set("day_of_month", "1");
     assert.equal((await upsertScheduled(rent)).ok, true);
 
-    const f = forecast(60, DAY);
+    const f = await forecast(60, DAY);
     assert.ok(f.totalOutCents > 0);
     assert.ok(f.shortfall, "a R8,000 rent against R5,000 cash must project a shortfall");
   });
@@ -466,13 +464,13 @@ describe("character", () => {
     promise.set("text", "Train at 18:00");
     promise.set("date", DAY);
     assert.equal((await createPromise(promise)).ok, true);
-    assert.equal(promiseRate(30, DAY).rate, null, "an open promise is not counted");
+    assert.equal((await promiseRate(30, DAY)).rate, null, "an open promise is not counted");
 
-    const open = db()
-      .prepare("SELECT id FROM promises WHERE status = 'OPEN' LIMIT 1")
-      .get() as { id: string };
+    const open = (await dbGet<{ id: string }>(
+      "SELECT id FROM promises WHERE status = 'OPEN' LIMIT 1",
+    ))!;
     await resolvePromise(open.id, "KEPT");
-    assert.equal(promiseRate(30, DAY).rate, 100);
+    assert.equal((await promiseRate(30, DAY)).rate, 100);
   });
 });
 
@@ -513,9 +511,10 @@ describe("ideas", () => {
     assert.equal(promoted.ok, true);
     if (!promoted.ok) return;
 
-    const project = db()
-      .prepare("SELECT title, status FROM projects WHERE id = ?")
-      .get(promoted.data.projectId) as { title: string; status: string };
+    const project = (await dbGet<{ title: string; status: string }>(
+      "SELECT title, status FROM projects WHERE id = ?",
+      [promoted.data.projectId],
+    ))!;
     assert.equal(project.title, "A promising idea");
     assert.equal(project.status, "PLANNED");
   });
@@ -526,8 +525,8 @@ describe("ideas", () => {
 describe("search", () => {
   test("finds entities by name and ignores very short queries", async () => {
     const { search } = await import("@/lib/services/search");
-    assert.deepEqual(search("a"), []);
-    const results = search("bench");
+    assert.deepEqual(await search("a"), []);
+    const results = await search("bench");
     assert.ok(results.some((r) => r.type === "Exercise" && r.title === "Barbell Bench Press"));
   });
 });

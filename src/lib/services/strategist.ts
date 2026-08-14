@@ -49,17 +49,17 @@ export interface StrategistBriefing {
   dataNote: string | null;
 }
 
-export function briefing(day: DayString = today()): StrategistBriefing {
+export async function briefing(day: DayString = today()): Promise<StrategistBriefing> {
   const out: Observation[] = [];
-  const history = scoreHistory(90, day);
+  const history = await scoreHistory(90, day);
   const scoredDays = history.length;
 
   const push = (o: Observation) => out.push(o);
 
   /* --------------------------------------------------------- ANALYST */
-  const week = averageScores(addDays(day, -6), day);
-  const priorWeek = averageScores(addDays(day, -13), addDays(day, -7));
-  const trajectories = pillarTrajectories(28, day);
+  const week = await averageScores(addDays(day, -6), day);
+  const priorWeek = await averageScores(addDays(day, -13), addDays(day, -7));
+  const trajectories = await pillarTrajectories(28, day);
 
   for (const t of trajectories) {
     const key = t.pillar.toLowerCase() as keyof typeof week;
@@ -79,7 +79,7 @@ export function briefing(day: DayString = today()): StrategistBriefing {
   }
 
   /* -------------------------------------------------------- REVIEWER */
-  const balance = balanceNow(28, day);
+  const balance = await balanceNow(28, day);
   for (const finding of balance.findings) {
     push({
       role: "REVIEWER",
@@ -91,7 +91,7 @@ export function briefing(day: DayString = today()): StrategistBriefing {
     });
   }
 
-  const outstanding = outstandingReviews(day);
+  const outstanding = await outstandingReviews(day);
   if (outstanding.length > 0) {
     push({
       role: "REVIEWER",
@@ -104,7 +104,7 @@ export function briefing(day: DayString = today()): StrategistBriefing {
   }
 
   /* ------------------------------------------------------ STRATEGIST */
-  const business = businessDashboard(day);
+  const business = await businessDashboard(day);
   if (business.pipeline.bottleneck) {
     const b = business.pipeline.bottleneck;
     push({
@@ -130,10 +130,10 @@ export function briefing(day: DayString = today()): StrategistBriefing {
   }
 
   // Activity without result — the pattern that looks like progress and is not.
-  const touches90 = scalar(
-    "SELECT COUNT(*) AS v FROM lead_stage_events WHERE date BETWEEN ? AND ?",
-    [addDays(day, -89), day],
-  );
+  const touches90 = await scalar(
+      "SELECT COUNT(*) AS v FROM lead_stage_events WHERE date BETWEEN ? AND ?",
+      [addDays(day, -89), day],
+    );
   if (touches90 >= 15 && business.revenue90Cents === 0) {
     push({
       role: "STRATEGIST",
@@ -145,13 +145,13 @@ export function briefing(day: DayString = today()): StrategistBriefing {
     });
   }
 
-  const mission = primaryMission();
+  const mission = await primaryMission();
   if (mission) {
-    const progress = computeMissionProgress(mission, day);
-    const unaligned = unalignedProjects(mission.id).length;
-    const activeProjects = scalar(
-      "SELECT COUNT(*) AS v FROM projects WHERE status IN ('ACTIVE','BLOCKED')",
-    );
+    const progress = await computeMissionProgress(mission, day);
+    const unaligned = (await unalignedProjects(mission.id)).length;
+    const activeProjects = await scalar(
+          "SELECT COUNT(*) AS v FROM projects WHERE status IN ('ACTIVE','BLOCKED')",
+        );
     if (unaligned > 0 && activeProjects > 0) {
       push({
         role: "STRATEGIST",
@@ -186,7 +186,7 @@ export function briefing(day: DayString = today()): StrategistBriefing {
   }
 
   /* ------------------------------------------------------------ BODY */
-  const load = trainingLoad(day);
+  const load = await trainingLoad(day);
   if (load.status === "SHARP_INCREASE" || load.status === "SHARP_DROP") {
     push({
       role: "ANALYST",
@@ -198,7 +198,7 @@ export function briefing(day: DayString = today()): StrategistBriefing {
     });
   }
 
-  const nutrition = nutritionTrend(28, day);
+  const nutrition = await nutritionTrend(28, day);
   if (nutrition.verdict === "OFF_TREND") {
     push({
       role: "ANALYST",
@@ -220,7 +220,7 @@ export function briefing(day: DayString = today()): StrategistBriefing {
   }
 
   /* --------------------------------------------------------- FINANCE */
-  const finance = financeDashboard(day);
+  const finance = await financeDashboard(day);
   if (finance.forecast30.shortfall) {
     push({
       role: "PLANNER",
@@ -255,7 +255,7 @@ export function briefing(day: DayString = today()): StrategistBriefing {
   }
 
   /* ------------------------------------------------------- CHARACTER */
-  const character = characterDashboard(day);
+  const character = await characterDashboard(day);
   if (character.promises30.rate !== null && character.promises30.meetsTarget === false) {
     push({
       role: "ACCOUNTABILITY",
@@ -304,7 +304,7 @@ export function briefing(day: DayString = today()): StrategistBriefing {
   }
 
   /* -------------------------------------------------------- LEARNING */
-  const learning = learningStats(day);
+  const learning = await learningStats(day);
   if (learning.total30 >= 5 && learning.applicationRate !== null && learning.applicationRate < 40) {
     push({
       role: "STRATEGIST",
@@ -317,7 +317,7 @@ export function briefing(day: DayString = today()): StrategistBriefing {
   }
 
   /* ---------------------------------------------------------- PLANNER */
-  const load2 = dayLoad(day);
+  const load2 = await dayLoad(day);
   if (load2.overloaded) {
     push({
       role: "PLANNER",
@@ -329,7 +329,7 @@ export function briefing(day: DayString = today()): StrategistBriefing {
     });
   }
 
-  const flagged = flagTasks(openTasks(), day);
+  const flagged = flagTasks(await openTasks(), day);
   const overdue = flagged.filter((f) => f.flags.includes("OVERDUE")).length;
   if (overdue > 0) {
     push({
@@ -355,7 +355,7 @@ export function briefing(day: DayString = today()): StrategistBriefing {
     });
   }
 
-  const readyIdeas = ideaViews().filter((i) => i.activation.ok);
+  const readyIdeas = (await ideaViews()).filter((i) => i.activation.ok);
   if (readyIdeas.length > 0) {
     push({
       role: "PLANNER",
@@ -367,7 +367,7 @@ export function briefing(day: DayString = today()): StrategistBriefing {
     });
   }
 
-  const body = bodyDashboard(day);
+  const body = await bodyDashboard(day);
   if (body.readiness.level === "LOW") {
     push({
       role: "PLANNER",

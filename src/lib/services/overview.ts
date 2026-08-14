@@ -47,7 +47,7 @@ export interface CommandCenter {
   season: Season | undefined;
   mission: Mission | undefined;
   missionProgress: MissionProgress | null;
-  bigThree: ReturnType<typeof bigThree>;
+  bigThree: Awaited<ReturnType<typeof bigThree>>;
   scores: {
     body: number | null;
     business: number | null;
@@ -56,23 +56,23 @@ export interface CommandCenter {
     learning: number | null;
     overall: number | null;
   };
-  trajectories: ReturnType<typeof pillarTrajectories>;
-  overallTrend: ReturnType<typeof overallTrajectory>;
-  balance: ReturnType<typeof balanceNow>;
+  trajectories: Awaited<ReturnType<typeof pillarTrajectories>>;
+  overallTrend: Awaited<ReturnType<typeof overallTrajectory>>;
+  balance: Awaited<ReturnType<typeof balanceNow>>;
   streak: number;
   training: {
     sessions: WorkoutSession[];
     nextTarget: NextTrainingTarget | null;
-    readiness: ReturnType<typeof bodyDashboard>["readiness"];
+    readiness: Awaited<ReturnType<typeof bodyDashboard>>["readiness"];
     loadStatus: string;
   };
-  nutrition: ReturnType<typeof bodyDashboard>["nutrition"];
+  nutrition: Awaited<ReturnType<typeof bodyDashboard>>["nutrition"];
   business: {
     mrrCents: number;
     mrrTargetCents: number | null;
     revenueThisMonthCents: number;
     openLeads: number;
-    nextAction: ReturnType<typeof nextSalesActions>[number] | null;
+    nextAction: Awaited<ReturnType<typeof nextSalesActions>>[number] | null;
   };
   finance: {
     cashCents: number;
@@ -86,14 +86,14 @@ export interface CommandCenter {
     habitsDue: number;
     disciplineScore: number | null;
   };
-  learning: ReturnType<typeof learningStats>;
+  learning: Awaited<ReturnType<typeof learningStats>>;
   alerts: Notification[];
-  outstandingReviews: ReturnType<typeof outstandingReviews>;
+  outstandingReviews: Awaited<ReturnType<typeof outstandingReviews>>;
   attention: {
     overdueTasks: number;
     blockedTasks: number;
     unalignedProjects: number;
-    dayLoad: ReturnType<typeof dayLoad>;
+    dayLoad: Awaited<ReturnType<typeof dayLoad>>;
   };
   activeGoals: number;
 }
@@ -102,18 +102,18 @@ export interface CommandCenter {
  * Assembles the Command Center. This is the one place the whole system is read
  * at once — everything else is a drill-down from here.
  */
-export function commandCenter(day: DayString = today()): CommandCenter {
+export async function commandCenter(day: DayString = today()): Promise<CommandCenter> {
   // Recompute today's score on read so the dashboard is never stale.
-  recomputeDayScore(day);
-  const stored = storedScore(day);
+  await recomputeDayScore(day);
+  const stored = await storedScore(day);
 
-  const season = activeSeason(day);
-  const mission = primaryMission();
-  const body = bodyDashboard(day);
-  const business = businessDashboard(day);
-  const finance = financeDashboard(day);
-  const character = characterDashboard(day);
-  const tasks = openTasks();
+  const season = await activeSeason(day);
+  const mission = await primaryMission();
+  const body = await bodyDashboard(day);
+  const business = await businessDashboard(day);
+  const finance = await financeDashboard(day);
+  const character = await characterDashboard(day);
+  const tasks = await openTasks();
   const flagged = flagTasks(tasks, day);
 
   const habitsDone = character.habits.filter((h) => h.done7 > 0 && h.daysSince === 0).length;
@@ -122,8 +122,8 @@ export function commandCenter(day: DayString = today()): CommandCenter {
     date: day,
     season,
     mission,
-    missionProgress: mission ? computeMissionProgress(mission, day) : null,
-    bigThree: bigThree(day),
+    missionProgress: mission ? await computeMissionProgress(mission, day) : null,
+    bigThree: await bigThree(day),
     scores: {
       body: stored?.body ?? null,
       business: stored?.business ?? null,
@@ -132,13 +132,13 @@ export function commandCenter(day: DayString = today()): CommandCenter {
       learning: stored?.learning ?? null,
       overall: stored?.overall ?? null,
     },
-    trajectories: pillarTrajectories(28, day),
-    overallTrend: overallTrajectory(28, day),
-    balance: balanceNow(28, day),
-    streak: currentStreak(60, day),
+    trajectories: await pillarTrajectories(28, day),
+    overallTrend: await overallTrajectory(28, day),
+    balance: await balanceNow(28, day),
+    streak: await currentStreak(60, day),
     training: {
       sessions: body.todaySessions,
-      nextTarget: nextTrainingTarget(body.todaySessions),
+      nextTarget: await nextTrainingTarget(body.todaySessions),
       readiness: body.readiness,
       loadStatus: body.load.message,
     },
@@ -162,28 +162,28 @@ export function commandCenter(day: DayString = today()): CommandCenter {
       habitsDue: character.habits.length,
       disciplineScore: character.disciplineScore,
     },
-    learning: learningStats(day),
-    alerts: syncNotifications(day),
-    outstandingReviews: outstandingReviews(day),
+    learning: await learningStats(day),
+    alerts: await syncNotifications(day),
+    outstandingReviews: await outstandingReviews(day),
     attention: {
       overdueTasks: flagged.filter((f) => f.flags.includes("OVERDUE")).length,
       blockedTasks: flagged.filter((f) => f.flags.includes("BLOCKED")).length,
-      unalignedProjects: unalignedProjects(mission?.id ?? null).length,
-      dayLoad: dayLoad(day),
+      unalignedProjects: (await unalignedProjects(mission?.id ?? null)).length,
+      dayLoad: await dayLoad(day),
     },
-    activeGoals: listGoals({ status: "ACTIVE" }).length,
+    activeGoals: (await listGoals({ status: "ACTIVE" })).length,
   };
 }
 
 /** The single most useful training number: what to hit on the first lift today. */
-function nextTrainingTarget(sessions: readonly WorkoutSession[]): NextTrainingTarget | null {
+async function nextTrainingTarget(sessions: readonly WorkoutSession[]): Promise<NextTrainingTarget | null> {
   const session =
     sessions.find((s) => s.status === "IN_PROGRESS") ??
     sessions.find((s) => s.status === "PLANNED") ??
     null;
   if (!session) return null;
 
-  const detail = sessionDetail(session.id);
+  const detail = await sessionDetail(session.id);
   if (!detail) return null;
 
   // First exercise with sets still outstanding.
@@ -225,15 +225,15 @@ export interface TodayView {
   missionProgress: MissionProgress | null;
   score: number | null;
   streak: number;
-  big3: ReturnType<typeof bigThree>;
-  flagged: ReturnType<typeof flagTasks>;
+  big3: Awaited<ReturnType<typeof bigThree>>;
+  flagged: Awaited<ReturnType<typeof flagTasks>>;
   sessions: WorkoutSession[];
-  nutrition: ReturnType<typeof bodyDashboard>["nutrition"];
-  readiness: ReturnType<typeof bodyDashboard>["readiness"];
-  promises: ReturnType<typeof characterDashboard>["todayPromises"];
-  habits: ReturnType<typeof characterDashboard>["habits"];
+  nutrition: Awaited<ReturnType<typeof bodyDashboard>>["nutrition"];
+  readiness: Awaited<ReturnType<typeof bodyDashboard>>["readiness"];
+  promises: Awaited<ReturnType<typeof characterDashboard>>["todayPromises"];
+  habits: Awaited<ReturnType<typeof characterDashboard>>["habits"];
   habitsDoneToday: Set<string>;
-  businessPriority: ReturnType<typeof nextSalesActions>[number] | null;
-  load: ReturnType<typeof dayLoad>;
+  businessPriority: Awaited<ReturnType<typeof nextSalesActions>>[number] | null;
+  load: Awaited<ReturnType<typeof dayLoad>>;
   backlog: Task[];
 }

@@ -32,11 +32,11 @@ export const dynamic = "force-dynamic";
 
 export default async function SessionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const detail = sessionDetail(id);
+  const detail = await sessionDetail(id);
   if (!detail) notFound();
 
   const { session, exercises } = detail;
-  const exerciseOptions = listExercises().map((e) => ({ value: e.id, label: e.name }));
+  const exerciseOptions = (await listExercises()).map((e) => ({ value: e.id, label: e.name }));
   const load = sessionLoad(session.duration_min, session.session_rpe);
   const isLive = session.status === "IN_PROGRESS";
   const isDone = session.status === "COMPLETED" || session.status === "MODIFIED";

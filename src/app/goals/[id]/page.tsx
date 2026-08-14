@@ -33,10 +33,10 @@ const HORIZON_LABEL: Record<string, string> = {
 
 export default async function GoalDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const goal = goalView(id);
+  const goal = await goalView(id);
   if (!goal) notFound();
 
-  const parents = listGoals({ status: "ACTIVE" }).map((g) => ({
+  const parents = (await listGoals({ status: "ACTIVE" })).map((g) => ({
     value: g.id,
     label: `${HORIZON_LABEL[g.horizon]} · ${g.title}`,
   }));

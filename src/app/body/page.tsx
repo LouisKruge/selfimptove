@@ -26,9 +26,9 @@ export const metadata = { title: "Body" };
 
 export default async function BodyDashboardPage() {
   const day = today();
-  const b = bodyDashboard(day);
-  const score = storedScore(day);
-  const series = scoreSeries("body", 28, day);
+  const b = await bodyDashboard(day);
+  const score = await storedScore(day);
+  const series = await scoreSeries("body", 28, day);
   const t = trajectory(series.map((s) => s.value));
 
   return (

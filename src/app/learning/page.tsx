@@ -32,11 +32,11 @@ export default async function LearningPage({
 }) {
   const params = await searchParams;
   const day = today();
-  const skills = skillViews();
-  const stats = learningStats(day);
-  const items = listLearningItems(60);
-  const score = storedScore(day);
-  const series = scoreSeries("learning", 28, day);
+  const skills = await skillViews();
+  const stats = await learningStats(day);
+  const items = await listLearningItems(60);
+  const score = await storedScore(day);
+  const series = await scoreSeries("learning", 28, day);
   const t = trajectory(series.map((s) => s.value));
 
   const unapplied = items.filter((i) => i.applied === 0 && i.kind !== "APPLICATION");

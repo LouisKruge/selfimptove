@@ -1,7 +1,7 @@
 "use server";
 
 import { refreshPaths } from "./revalidate";
-import { db, get, scalar } from "@/lib/db";
+import { get, run, scalar } from "@/lib/db";
 import { insert, remove, update } from "@/lib/db/repo";
 import { nowIso, today } from "@/lib/core/date";
 import { PILLARS } from "@/lib/types";
@@ -54,31 +54,30 @@ export async function createTask(form: FormData): Promise<ActionResult<{ id: str
 
   // Only one must-win per day: an existing one is demoted to support.
   if (v.priority === "MUST_WIN" && v.scheduled_date) {
-    db()
-      .prepare(
-        `UPDATE tasks SET priority = 'SUPPORT', updated_at = ?
+    await run(
+      `UPDATE tasks SET priority = 'SUPPORT', updated_at = ?
           WHERE scheduled_date = ? AND priority = 'MUST_WIN' AND status <> 'CANCELLED'`,
-      )
-      .run(nowIso(), v.scheduled_date);
+      [nowIso(), v.scheduled_date],
+    );
   }
 
-  const newId = insert("tasks", {
-    title: v.title,
-    description: v.description ?? null,
-    expected_outcome: v.expected_outcome ?? null,
-    pillar: v.pillar,
-    priority: v.priority,
-    scheduled_date: v.scheduled_date ?? null,
-    deadline: v.deadline ?? null,
-    estimated_minutes: v.estimated_minutes ?? null,
-    project_id: v.project_id ?? null,
-    mission_id: v.mission_id ?? null,
-    goal_id: v.goal_id ?? null,
-    status: "TODO",
-    sort_order: scalar("SELECT COALESCE(MAX(sort_order), 0) + 1 AS v FROM tasks"),
-  });
+  const newId = await insert("tasks", {
+      title: v.title,
+      description: v.description ?? null,
+      expected_outcome: v.expected_outcome ?? null,
+      pillar: v.pillar,
+      priority: v.priority,
+      scheduled_date: v.scheduled_date ?? null,
+      deadline: v.deadline ?? null,
+      estimated_minutes: v.estimated_minutes ?? null,
+      project_id: v.project_id ?? null,
+      mission_id: v.mission_id ?? null,
+      goal_id: v.goal_id ?? null,
+      status: "TODO",
+      sort_order: await scalar("SELECT COALESCE(MAX(sort_order), 0) + 1 AS v FROM tasks"),
+    });
 
-  if (v.scheduled_date) recomputeDayScore(v.scheduled_date);
+  if (v.scheduled_date) await recomputeDayScore(v.scheduled_date);
   refresh();
   return ok({ id: newId });
 }
@@ -95,10 +94,10 @@ export async function updateTask(form: FormData): Promise<ActionResult> {
   if (!parsed.ok) return parsed.result;
   const { id: taskId, ...rest } = parsed.value;
 
-  const existing = get<{ scheduled_date: string | null }>(
-    "SELECT scheduled_date FROM tasks WHERE id = ?",
-    [taskId],
-  );
+  const existing = await get<{ scheduled_date: string | null }>(
+      "SELECT scheduled_date FROM tasks WHERE id = ?",
+      [taskId],
+    );
   if (!existing) return fail("Task not found.");
 
   const patch: Record<string, unknown> = { ...rest };
@@ -106,12 +105,12 @@ export async function updateTask(form: FormData): Promise<ActionResult> {
   if (rest.status && rest.status !== "COMPLETE") patch.completed_at = null;
   if (rest.status && rest.status !== "BLOCKED") patch.blocked_reason = null;
 
-  update("tasks", taskId, patch);
+  await update("tasks", taskId, patch);
 
   const days = [existing.scheduled_date, rest.scheduled_date].filter(
     (d): d is string => typeof d === "string",
   );
-  for (const d of days) recomputeDayScore(d);
+  for (const d of days) await recomputeDayScore(d);
   refresh();
   return ok();
 }
@@ -126,33 +125,33 @@ export async function setTaskStatus(taskId: string, status: string): Promise<Act
   );
   if (!parsed.ok) return parsed.result;
 
-  const existing = get<{ scheduled_date: string | null }>(
-    "SELECT scheduled_date FROM tasks WHERE id = ?",
-    [taskId],
-  );
+  const existing = await get<{ scheduled_date: string | null }>(
+      "SELECT scheduled_date FROM tasks WHERE id = ?",
+      [taskId],
+    );
   if (!existing) return fail("Task not found.");
 
-  update("tasks", taskId, {
-    status: parsed.value.status,
-    completed_at: parsed.value.status === "COMPLETE" ? nowIso() : null,
-  });
-  recomputeDayScore(existing.scheduled_date ?? today());
+  await update("tasks", taskId, {
+        status: parsed.value.status,
+        completed_at: parsed.value.status === "COMPLETE" ? nowIso() : null,
+      });
+  await recomputeDayScore(existing.scheduled_date ?? today());
   refresh();
   return ok();
 }
 
 export async function toggleTask(taskId: string): Promise<ActionResult> {
-  const row = get<{ status: string; scheduled_date: string | null }>(
-    "SELECT status, scheduled_date FROM tasks WHERE id = ?",
-    [taskId],
-  );
+  const row = await get<{ status: string; scheduled_date: string | null }>(
+      "SELECT status, scheduled_date FROM tasks WHERE id = ?",
+      [taskId],
+    );
   if (!row) return fail("Task not found.");
   const next = row.status === "COMPLETE" ? "TODO" : "COMPLETE";
-  update("tasks", taskId, {
-    status: next,
-    completed_at: next === "COMPLETE" ? nowIso() : null,
-  });
-  recomputeDayScore(row.scheduled_date ?? today());
+  await update("tasks", taskId, {
+        status: next,
+        completed_at: next === "COMPLETE" ? nowIso() : null,
+      });
+  await recomputeDayScore(row.scheduled_date ?? today());
   refresh();
   return ok();
 }
@@ -160,13 +159,13 @@ export async function toggleTask(taskId: string): Promise<ActionResult> {
 export async function rescheduleTask(taskId: string, date: string): Promise<ActionResult> {
   const parsed = parseWith(z.object({ id, date: dayString }), { id: taskId, date });
   if (!parsed.ok) return parsed.result;
-  const row = get<{ scheduled_date: string | null }>(
-    "SELECT scheduled_date FROM tasks WHERE id = ?",
-    [taskId],
-  );
-  update("tasks", taskId, { scheduled_date: parsed.value.date });
-  if (row?.scheduled_date) recomputeDayScore(row.scheduled_date);
-  recomputeDayScore(parsed.value.date);
+  const row = await get<{ scheduled_date: string | null }>(
+      "SELECT scheduled_date FROM tasks WHERE id = ?",
+      [taskId],
+    );
+  await update("tasks", taskId, { scheduled_date: parsed.value.date });
+  if (row?.scheduled_date) await recomputeDayScore(row.scheduled_date);
+  await recomputeDayScore(parsed.value.date);
   refresh();
   return ok();
 }
@@ -179,65 +178,65 @@ export async function delegateTask(taskId: string, to: string): Promise<ActionRe
   const parsed = parseWith(z.object({ id, to: requiredText }), { id: taskId, to });
   if (!parsed.ok) return parsed.result;
 
-  const row = get<{ scheduled_date: string | null }>(
-    "SELECT scheduled_date FROM tasks WHERE id = ?",
-    [taskId],
-  );
+  const row = await get<{ scheduled_date: string | null }>(
+      "SELECT scheduled_date FROM tasks WHERE id = ?",
+      [taskId],
+    );
   if (!row) return fail("Task not found.");
 
-  update("tasks", taskId, { delegated_to: parsed.value.to, priority: "SUPPORT" });
-  if (row.scheduled_date) recomputeDayScore(row.scheduled_date);
+  await update("tasks", taskId, { delegated_to: parsed.value.to, priority: "SUPPORT" });
+  if (row.scheduled_date) await recomputeDayScore(row.scheduled_date);
   refresh();
   return ok();
 }
 
 export async function undelegateTask(taskId: string): Promise<ActionResult> {
-  const row = get<{ scheduled_date: string | null }>(
-    "SELECT scheduled_date FROM tasks WHERE id = ?",
-    [taskId],
-  );
+  const row = await get<{ scheduled_date: string | null }>(
+      "SELECT scheduled_date FROM tasks WHERE id = ?",
+      [taskId],
+    );
   if (!row) return fail("Task not found.");
-  update("tasks", taskId, { delegated_to: null });
-  if (row.scheduled_date) recomputeDayScore(row.scheduled_date);
+  await update("tasks", taskId, { delegated_to: null });
+  if (row.scheduled_date) await recomputeDayScore(row.scheduled_date);
   refresh();
   return ok();
 }
 
 export async function deleteTask(taskId: string): Promise<ActionResult> {
-  const row = get<{ scheduled_date: string | null }>(
-    "SELECT scheduled_date FROM tasks WHERE id = ?",
-    [taskId],
-  );
-  remove("tasks", taskId);
-  if (row?.scheduled_date) recomputeDayScore(row.scheduled_date);
+  const row = await get<{ scheduled_date: string | null }>(
+      "SELECT scheduled_date FROM tasks WHERE id = ?",
+      [taskId],
+    );
+  await remove("tasks", taskId);
+  if (row?.scheduled_date) await recomputeDayScore(row.scheduled_date);
   refresh();
   return ok();
 }
 
 /** Turns a task that has outgrown itself into a project, carrying the link. */
 export async function convertTaskToProject(taskId: string): Promise<ActionResult<{ id: string }>> {
-  const task = get<{
-    title: string;
-    description: string | null;
-    expected_outcome: string | null;
-    pillar: string;
-    mission_id: string | null;
-    goal_id: string | null;
-    deadline: string | null;
-  }>("SELECT * FROM tasks WHERE id = ?", [taskId]);
+  const task = await get<{
+      title: string;
+      description: string | null;
+      expected_outcome: string | null;
+      pillar: string;
+      mission_id: string | null;
+      goal_id: string | null;
+      deadline: string | null;
+    }>("SELECT * FROM tasks WHERE id = ?", [taskId]);
   if (!task) return fail("Task not found.");
 
-  const projectId = insert("projects", {
-    title: task.title,
-    objective: task.description,
-    expected_outcome: task.expected_outcome,
-    pillar: task.pillar,
-    mission_id: task.mission_id,
-    goal_id: task.goal_id,
-    deadline: task.deadline,
-    status: "ACTIVE",
-  });
-  update("tasks", taskId, { status: "CANCELLED", project_id: projectId });
+  const projectId = await insert("projects", {
+      title: task.title,
+      objective: task.description,
+      expected_outcome: task.expected_outcome,
+      pillar: task.pillar,
+      mission_id: task.mission_id,
+      goal_id: task.goal_id,
+      deadline: task.deadline,
+      status: "ACTIVE",
+    });
+  await update("tasks", taskId, { status: "CANCELLED", project_id: projectId });
   refresh("/business/projects");
   return ok({ id: projectId });
 }
@@ -265,23 +264,23 @@ export async function createGoal(form: FormData): Promise<ActionResult<{ id: str
   if (!parsed.ok) return parsed.result;
   const v = parsed.value;
 
-  const newId = insert("goals", {
-    title: v.title,
-    why: v.why ?? null,
-    horizon: v.horizon,
-    pillar: v.pillar,
-    kpi: v.kpi ?? null,
-    unit: v.unit ?? null,
-    start_value: v.start_value ?? v.current_value ?? null,
-    current_value: v.current_value ?? null,
-    target_value: v.target_value ?? null,
-    direction: v.direction,
-    deadline: v.deadline ?? null,
-    parent_id: v.parent_id ?? null,
-    next_action: v.next_action ?? null,
-    status: "ACTIVE",
-    sort_order: scalar("SELECT COALESCE(MAX(sort_order), 0) + 1 AS v FROM goals"),
-  });
+  const newId = await insert("goals", {
+      title: v.title,
+      why: v.why ?? null,
+      horizon: v.horizon,
+      pillar: v.pillar,
+      kpi: v.kpi ?? null,
+      unit: v.unit ?? null,
+      start_value: v.start_value ?? v.current_value ?? null,
+      current_value: v.current_value ?? null,
+      target_value: v.target_value ?? null,
+      direction: v.direction,
+      deadline: v.deadline ?? null,
+      parent_id: v.parent_id ?? null,
+      next_action: v.next_action ?? null,
+      status: "ACTIVE",
+      sort_order: await scalar("SELECT COALESCE(MAX(sort_order), 0) + 1 AS v FROM goals"),
+    });
   refresh();
   return ok({ id: newId });
 }
@@ -301,7 +300,7 @@ export async function updateGoal(form: FormData): Promise<ActionResult> {
 
   const patch: Record<string, unknown> = { ...rest };
   if (rest.status === "ACHIEVED") patch.completed_at = nowIso();
-  update("goals", goalId, patch);
+  await update("goals", goalId, patch);
   refresh(`/goals/${goalId}`);
   return ok();
 }
@@ -309,13 +308,13 @@ export async function updateGoal(form: FormData): Promise<ActionResult> {
 export async function setGoalValue(goalId: string, value: number): Promise<ActionResult> {
   const parsed = parseWith(z.object({ id, value: z.number().finite() }), { id: goalId, value });
   if (!parsed.ok) return parsed.result;
-  update("goals", goalId, { current_value: parsed.value.value });
+  await update("goals", goalId, { current_value: parsed.value.value });
   refresh(`/goals/${goalId}`);
   return ok();
 }
 
 export async function deleteGoal(goalId: string): Promise<ActionResult> {
-  remove("goals", goalId);
+  await remove("goals", goalId);
   refresh();
   return ok();
 }
@@ -345,26 +344,26 @@ export async function createMission(form: FormData): Promise<ActionResult<{ id: 
 
   // Only ONE primary mission may be active. Any existing one is stood down.
   if (v.kind === "PRIMARY") {
-    const existing = get<{ id: string }>(
-      "SELECT id FROM missions WHERE kind = 'PRIMARY' AND status = 'ACTIVE'",
-    );
-    if (existing) update("missions", existing.id, { kind: "SECONDARY" });
+    const existing = await get<{ id: string }>(
+          "SELECT id FROM missions WHERE kind = 'PRIMARY' AND status = 'ACTIVE'",
+        );
+    if (existing) await update("missions", existing.id, { kind: "SECONDARY" });
   }
 
-  const newId = insert("missions", {
-    title: v.title,
-    objective: v.objective ?? null,
-    why: v.why ?? null,
-    kind: v.kind,
-    start_date: v.start_date,
-    end_date: v.end_date,
-    target_value: v.target_value ?? null,
-    current_value: v.current_value ?? null,
-    unit: v.unit ?? null,
-    goal_id: v.goal_id ?? null,
-    season_id: v.season_id ?? null,
-    status: "ACTIVE",
-  });
+  const newId = await insert("missions", {
+      title: v.title,
+      objective: v.objective ?? null,
+      why: v.why ?? null,
+      kind: v.kind,
+      start_date: v.start_date,
+      end_date: v.end_date,
+      target_value: v.target_value ?? null,
+      current_value: v.current_value ?? null,
+      unit: v.unit ?? null,
+      goal_id: v.goal_id ?? null,
+      season_id: v.season_id ?? null,
+      status: "ACTIVE",
+    });
   refresh(`/missions/${newId}`);
   return ok({ id: newId });
 }
@@ -381,35 +380,35 @@ export async function updateMission(form: FormData): Promise<ActionResult> {
   const { id: missionId, ...rest } = parsed.value;
 
   if (rest.kind === "PRIMARY" && (rest.status ?? "ACTIVE") === "ACTIVE") {
-    const existing = get<{ id: string }>(
-      "SELECT id FROM missions WHERE kind = 'PRIMARY' AND status = 'ACTIVE' AND id <> ?",
-      [missionId],
-    );
-    if (existing) update("missions", existing.id, { kind: "SECONDARY" });
+    const existing = await get<{ id: string }>(
+          "SELECT id FROM missions WHERE kind = 'PRIMARY' AND status = 'ACTIVE' AND id <> ?",
+          [missionId],
+        );
+    if (existing) await update("missions", existing.id, { kind: "SECONDARY" });
   }
 
   const patch: Record<string, unknown> = { ...rest };
   if (rest.status === "COMPLETE") patch.completed_at = nowIso();
-  update("missions", missionId, patch);
+  await update("missions", missionId, patch);
   refresh(`/missions/${missionId}`);
   return ok();
 }
 
 export async function promoteMission(missionId: string): Promise<ActionResult> {
-  const mission = get<{ id: string }>("SELECT id FROM missions WHERE id = ?", [missionId]);
+  const mission = await get<{ id: string }>("SELECT id FROM missions WHERE id = ?", [missionId]);
   if (!mission) return fail("Mission not found.");
-  const existing = get<{ id: string }>(
-    "SELECT id FROM missions WHERE kind = 'PRIMARY' AND status = 'ACTIVE' AND id <> ?",
-    [missionId],
-  );
-  if (existing) update("missions", existing.id, { kind: "SECONDARY" });
-  update("missions", missionId, { kind: "PRIMARY", status: "ACTIVE" });
+  const existing = await get<{ id: string }>(
+      "SELECT id FROM missions WHERE kind = 'PRIMARY' AND status = 'ACTIVE' AND id <> ?",
+      [missionId],
+    );
+  if (existing) await update("missions", existing.id, { kind: "SECONDARY" });
+  await update("missions", missionId, { kind: "PRIMARY", status: "ACTIVE" });
   refresh(`/missions/${missionId}`);
   return ok();
 }
 
 export async function deleteMission(missionId: string): Promise<ActionResult> {
-  remove("missions", missionId);
+  await remove("missions", missionId);
   refresh();
   return ok();
 }
@@ -429,18 +428,18 @@ export async function createMilestone(form: FormData): Promise<ActionResult> {
   );
   if (!parsed.ok) return parsed.result;
   const v = parsed.value;
-  insert("milestones", {
-    mission_id: v.mission_id,
-    title: v.title,
-    description: v.description ?? null,
-    target_date: v.target_date ?? null,
-    weight: v.weight ?? 1,
-    status: "PENDING",
-    sort_order: scalar(
-      "SELECT COALESCE(MAX(sort_order), 0) + 1 AS v FROM milestones WHERE mission_id = ?",
-      [v.mission_id],
-    ),
-  });
+  await insert("milestones", {
+        mission_id: v.mission_id,
+        title: v.title,
+        description: v.description ?? null,
+        target_date: v.target_date ?? null,
+        weight: v.weight ?? 1,
+        status: "PENDING",
+        sort_order: await scalar(
+                  "SELECT COALESCE(MAX(sort_order), 0) + 1 AS v FROM milestones WHERE mission_id = ?",
+                  [v.mission_id],
+                ),
+      });
   refresh(`/missions/${v.mission_id}`);
   return ok();
 }
@@ -454,23 +453,23 @@ export async function setMilestoneStatus(
     { id: milestoneId, status },
   );
   if (!parsed.ok) return parsed.result;
-  const row = get<{ mission_id: string }>("SELECT mission_id FROM milestones WHERE id = ?", [
-    milestoneId,
-  ]);
+  const row = await get<{ mission_id: string }>("SELECT mission_id FROM milestones WHERE id = ?", [
+      milestoneId,
+    ]);
   if (!row) return fail("Milestone not found.");
-  update("milestones", milestoneId, {
-    status: parsed.value.status,
-    completed_at: parsed.value.status === "COMPLETE" ? nowIso() : null,
-  });
+  await update("milestones", milestoneId, {
+        status: parsed.value.status,
+        completed_at: parsed.value.status === "COMPLETE" ? nowIso() : null,
+      });
   refresh(`/missions/${row.mission_id}`);
   return ok();
 }
 
 export async function deleteMilestone(milestoneId: string): Promise<ActionResult> {
-  const row = get<{ mission_id: string }>("SELECT mission_id FROM milestones WHERE id = ?", [
-    milestoneId,
-  ]);
-  remove("milestones", milestoneId);
+  const row = await get<{ mission_id: string }>("SELECT mission_id FROM milestones WHERE id = ?", [
+      milestoneId,
+    ]);
+  await remove("milestones", milestoneId);
   if (row) refresh(`/missions/${row.mission_id}`);
   return ok();
 }
@@ -490,13 +489,13 @@ export async function createMissionKpi(form: FormData): Promise<ActionResult> {
   );
   if (!parsed.ok) return parsed.result;
   const v = parsed.value;
-  insert("mission_kpis", {
-    mission_id: v.mission_id,
-    name: v.name,
-    unit: v.unit ?? null,
-    current_value: v.current_value ?? null,
-    target_value: v.target_value ?? null,
-  });
+  await insert("mission_kpis", {
+        mission_id: v.mission_id,
+        name: v.name,
+        unit: v.unit ?? null,
+        current_value: v.current_value ?? null,
+        target_value: v.target_value ?? null,
+      });
   refresh(`/missions/${v.mission_id}`);
   return ok();
 }
@@ -507,22 +506,22 @@ export async function updateMissionKpi(form: FormData): Promise<ActionResult> {
     formObject(form),
   );
   if (!parsed.ok) return parsed.result;
-  const row = get<{ mission_id: string }>("SELECT mission_id FROM mission_kpis WHERE id = ?", [
-    parsed.value.id,
-  ]);
-  update("mission_kpis", parsed.value.id, {
-    current_value: parsed.value.current_value,
-    target_value: parsed.value.target_value,
-  });
+  const row = await get<{ mission_id: string }>("SELECT mission_id FROM mission_kpis WHERE id = ?", [
+      parsed.value.id,
+    ]);
+  await update("mission_kpis", parsed.value.id, {
+        current_value: parsed.value.current_value,
+        target_value: parsed.value.target_value,
+      });
   if (row) refresh(`/missions/${row.mission_id}`);
   return ok();
 }
 
 export async function deleteMissionKpi(kpiId: string): Promise<ActionResult> {
-  const row = get<{ mission_id: string }>("SELECT mission_id FROM mission_kpis WHERE id = ?", [
-    kpiId,
-  ]);
-  remove("mission_kpis", kpiId);
+  const row = await get<{ mission_id: string }>("SELECT mission_id FROM mission_kpis WHERE id = ?", [
+      kpiId,
+    ]);
+  await remove("mission_kpis", kpiId);
   if (row) refresh(`/missions/${row.mission_id}`);
   return ok();
 }
@@ -544,16 +543,16 @@ export async function createRisk(form: FormData): Promise<ActionResult> {
   );
   if (!parsed.ok) return parsed.result;
   const v = parsed.value;
-  insert("risks", {
-    mission_id: v.mission_id ?? null,
-    project_id: v.project_id ?? null,
-    title: v.title,
-    detail: v.detail ?? null,
-    severity: v.severity,
-    likelihood: v.likelihood,
-    mitigation: v.mitigation ?? null,
-    status: "OPEN",
-  });
+  await insert("risks", {
+        mission_id: v.mission_id ?? null,
+        project_id: v.project_id ?? null,
+        title: v.title,
+        detail: v.detail ?? null,
+        severity: v.severity,
+        likelihood: v.likelihood,
+        mitigation: v.mitigation ?? null,
+        status: "OPEN",
+      });
   refresh(v.mission_id ? `/missions/${v.mission_id}` : "/business/projects");
   return ok();
 }
@@ -564,13 +563,13 @@ export async function setRiskStatus(riskId: string, status: string): Promise<Act
     { id: riskId, status },
   );
   if (!parsed.ok) return parsed.result;
-  update("risks", riskId, { status: parsed.value.status });
+  await update("risks", riskId, { status: parsed.value.status });
   refresh("/business/projects");
   return ok();
 }
 
 export async function deleteRisk(riskId: string): Promise<ActionResult> {
-  remove("risks", riskId);
+  await remove("risks", riskId);
   refresh("/business/projects");
   return ok();
 }
@@ -595,20 +594,20 @@ export async function createProject(form: FormData): Promise<ActionResult<{ id: 
   const parsed = parseWith(projectSchema, formObject(form));
   if (!parsed.ok) return parsed.result;
   const v = parsed.value;
-  const newId = insert("projects", {
-    title: v.title,
-    objective: v.objective ?? null,
-    expected_outcome: v.expected_outcome ?? null,
-    pillar: v.pillar,
-    revenue_impact: v.revenue_impact ?? null,
-    cost: v.cost ?? null,
-    deadline: v.deadline ?? null,
-    mission_id: v.mission_id ?? null,
-    goal_id: v.goal_id ?? null,
-    business_id: v.business_id ?? null,
-    next_action: v.next_action ?? null,
-    status: "ACTIVE",
-  });
+  const newId = await insert("projects", {
+      title: v.title,
+      objective: v.objective ?? null,
+      expected_outcome: v.expected_outcome ?? null,
+      pillar: v.pillar,
+      revenue_impact: v.revenue_impact ?? null,
+      cost: v.cost ?? null,
+      deadline: v.deadline ?? null,
+      mission_id: v.mission_id ?? null,
+      goal_id: v.goal_id ?? null,
+      business_id: v.business_id ?? null,
+      next_action: v.next_action ?? null,
+      status: "ACTIVE",
+    });
   refresh("/business/projects", `/business/projects/${newId}`);
   return ok({ id: newId });
 }
@@ -625,7 +624,7 @@ export async function updateProject(form: FormData): Promise<ActionResult> {
   const { id: projectId, ...rest } = parsed.value;
   const patch: Record<string, unknown> = { ...rest };
   if (rest.status === "COMPLETE") patch.completed_at = nowIso();
-  update("projects", projectId, patch);
+  await update("projects", projectId, patch);
   refresh("/business/projects", `/business/projects/${projectId}`);
   return ok();
 }
@@ -636,16 +635,16 @@ export async function setProjectStatus(projectId: string, status: string): Promi
     { id: projectId, status },
   );
   if (!parsed.ok) return parsed.result;
-  update("projects", projectId, {
-    status: parsed.value.status,
-    completed_at: parsed.value.status === "COMPLETE" ? nowIso() : null,
-  });
+  await update("projects", projectId, {
+        status: parsed.value.status,
+        completed_at: parsed.value.status === "COMPLETE" ? nowIso() : null,
+      });
   refresh("/business/projects", `/business/projects/${projectId}`);
   return ok();
 }
 
 export async function deleteProject(projectId: string): Promise<ActionResult> {
-  remove("projects", projectId);
+  await remove("projects", projectId);
   refresh("/business/projects");
   return ok();
 }
@@ -683,20 +682,20 @@ export async function createSeason(form: FormData): Promise<ActionResult> {
   if (total !== 100) return fail(`Pillar weights must total 100. They currently total ${total}.`);
 
   if (v.activate) {
-    db()
-      .prepare("UPDATE seasons SET status = 'CLOSED', updated_at = ? WHERE status = 'ACTIVE'")
-      .run(nowIso());
+    await run("UPDATE seasons SET status = 'CLOSED', updated_at = ? WHERE status = 'ACTIVE'", [
+      nowIso(),
+    ]);
   }
 
-  insert("seasons", {
-    name: v.name,
-    objective: v.objective ?? null,
-    why: v.why ?? null,
-    start_date: v.start_date,
-    end_date: v.end_date ?? null,
-    status: v.activate ? "ACTIVE" : "PLANNED",
-    ...weights,
-  });
+  await insert("seasons", {
+        name: v.name,
+        objective: v.objective ?? null,
+        why: v.why ?? null,
+        start_date: v.start_date,
+        end_date: v.end_date ?? null,
+        status: v.activate ? "ACTIVE" : "PLANNED",
+        ...weights,
+      });
   refresh("/settings");
   return ok();
 }
@@ -719,7 +718,7 @@ export async function updateSeason(form: FormData): Promise<ActionResult> {
   if (!parsed.ok) return parsed.result;
   const { id: seasonId, ...rest } = parsed.value;
 
-  const current = get<Record<string, number>>("SELECT * FROM seasons WHERE id = ?", [seasonId]);
+  const current = await get<Record<string, number>>("SELECT * FROM seasons WHERE id = ?", [seasonId]);
   if (!current) return fail("Season not found.");
 
   const weights = {
@@ -732,20 +731,20 @@ export async function updateSeason(form: FormData): Promise<ActionResult> {
   const total = Object.values(weights).reduce((a, b) => a + b, 0);
   if (total !== 100) return fail(`Pillar weights must total 100. They currently total ${total}.`);
 
-  update("seasons", seasonId, { ...rest, ...weights });
-  recomputeDayScore(today());
+  await update("seasons", seasonId, { ...rest, ...weights });
+  await recomputeDayScore(today());
   refresh("/settings");
   return ok();
 }
 
 export async function activateSeason(seasonId: string): Promise<ActionResult> {
-  const season = get<{ id: string }>("SELECT id FROM seasons WHERE id = ?", [seasonId]);
+  const season = await get<{ id: string }>("SELECT id FROM seasons WHERE id = ?", [seasonId]);
   if (!season) return fail("Season not found.");
-  db()
-    .prepare("UPDATE seasons SET status = 'CLOSED', updated_at = ? WHERE status = 'ACTIVE'")
-    .run(nowIso());
-  update("seasons", seasonId, { status: "ACTIVE" });
-  recomputeDayScore(today());
+  await run("UPDATE seasons SET status = 'CLOSED', updated_at = ? WHERE status = 'ACTIVE'", [
+    nowIso(),
+  ]);
+  await update("seasons", seasonId, { status: "ACTIVE" });
+  await recomputeDayScore(today());
   refresh("/settings");
   return ok();
 }

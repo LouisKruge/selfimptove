@@ -46,13 +46,13 @@ export default async function CashFlowPage({
 }) {
   const params = await searchParams;
   const day = today();
-  const f = forecasts(day);
-  const accounts = listAccounts();
-  const scheduled = listScheduled(false);
-  const expenses = listPersonalExpenses(40);
-  const income = listIncome(20);
-  const debts = listDebts();
-  const cash = cashOnHandCents();
+  const f = await forecasts(day);
+  const accounts = await listAccounts();
+  const scheduled = await listScheduled(false);
+  const expenses = await listPersonalExpenses(40);
+  const income = await listIncome(20);
+  const debts = await listDebts();
+  const cash = await cashOnHandCents();
 
   const horizons = [
     { label: "7 day", data: f.week },

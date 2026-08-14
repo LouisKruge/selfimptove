@@ -22,7 +22,7 @@ const ORDER: StrategistRole[] = ["STRATEGIST", "PLANNER", "ANALYST", "REVIEWER",
 
 export default async function StrategistPage() {
   const day = today();
-  const b = briefing(day);
+  const b = await briefing(day);
 
   const byRole = new Map<StrategistRole, typeof b.observations>();
   for (const o of b.observations) {

@@ -27,9 +27,9 @@ export const metadata = { title: "Finance" };
 
 export default async function FinanceDashboardPage() {
   const day = today();
-  const f = financeDashboard(day);
-  const score = storedScore(day);
-  const series = scoreSeries("finance", 28, day);
+  const f = await financeDashboard(day);
+  const score = await storedScore(day);
+  const series = await scoreSeries("finance", 28, day);
   const t = trajectory(series.map((s) => s.value));
 
   return (

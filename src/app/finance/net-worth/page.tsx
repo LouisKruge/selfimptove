@@ -29,9 +29,9 @@ export const metadata = { title: "Net Worth" };
 
 export default async function NetWorthPage() {
   const day = today();
-  const now = netWorthNow();
-  const snapshots = listNetWorthSnapshots(60);
-  const assets = listAssets();
+  const now = await netWorthNow();
+  const snapshots = await listNetWorthSnapshots(60);
+  const assets = await listAssets();
   const ordered = [...snapshots].reverse();
   const trend = metricTrajectory(ordered.map((s) => s.net_worth_cents), 2);
 

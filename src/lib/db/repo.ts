@@ -1,6 +1,6 @@
 import "server-only";
 
-import { db } from "./index";
+import { all, get, run } from "./index";
 import { newId } from "@/lib/core/ids";
 import { nowIso } from "@/lib/core/date";
 
@@ -16,11 +16,11 @@ function assertIdent(name: string) {
   if (!IDENT.test(name)) throw new Error(`Unsafe identifier: ${name}`);
 }
 
-export function insert<T extends Record<string, unknown>>(
+export async function insert<T extends Record<string, unknown>>(
   table: string,
   values: T,
   opts: { id?: string; timestamps?: boolean } = {},
-): string {
+): Promise<string> {
   assertIdent(table);
   const id = opts.id ?? (values.id as string | undefined) ?? newId();
   const ts = nowIso();
@@ -37,18 +37,19 @@ export function insert<T extends Record<string, unknown>>(
   const sql = `INSERT INTO ${table} (${cols.join(", ")}) VALUES (${cols
     .map(() => "?")
     .join(", ")})`;
-  db()
-    .prepare(sql)
-    .run(...cols.map((c) => normalise(row[c])));
+  await run(
+    sql,
+    cols.map((c) => normalise(row[c])),
+  );
   return id;
 }
 
-export function update(
+export async function update(
   table: string,
   id: string,
   values: Record<string, unknown>,
   opts: { timestamps?: boolean } = {},
-): void {
+): Promise<void> {
   assertIdent(table);
   const row: Record<string, unknown> = { ...values };
   if (opts.timestamps !== false) row.updated_at = nowIso();
@@ -58,41 +59,41 @@ export function update(
   for (const c of cols) assertIdent(c);
 
   const sql = `UPDATE ${table} SET ${cols.map((c) => `${c} = ?`).join(", ")} WHERE id = ?`;
-  db()
-    .prepare(sql)
-    .run(...cols.map((c) => normalise(row[c])), id);
+  await run(sql, [...cols.map((c) => normalise(row[c])), id]);
 }
 
-export function upsertByColumn<T extends Record<string, unknown>>(
+export async function upsertByColumn<T extends Record<string, unknown>>(
   table: string,
   column: string,
   value: string,
   values: T,
-): string {
+): Promise<string> {
   assertIdent(table);
   assertIdent(column);
-  const existing = db()
-    .prepare(`SELECT id FROM ${table} WHERE ${column} = ?`)
-    .get(value) as { id: string } | undefined;
+  const existing = await get<{ id: string }>(
+    `SELECT id FROM ${table} WHERE ${column} = ?`,
+    [value],
+  );
   if (existing) {
-    update(table, existing.id, values);
+    await update(table, existing.id, values);
     return existing.id;
   }
   return insert(table, { ...values, [column]: value } as Record<string, unknown>);
 }
 
-export function remove(table: string, id: string): void {
+export async function remove(table: string, id: string): Promise<void> {
   assertIdent(table);
-  db().prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+  await run(`DELETE FROM ${table} WHERE id = ?`, [id]);
 }
 
-export function byId<T>(table: string, id: string): T | undefined {
+export async function byId<T>(table: string, id: string): Promise<T | undefined> {
   assertIdent(table);
-  return db().prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id) as T | undefined;
+  const rows = await all<T>(`SELECT * FROM ${table} WHERE id = ?`, [id]);
+  return rows[0];
 }
 
 /** SQLite has no boolean type; undefined is dropped before this is reached. */
-function normalise(v: unknown): string | number | null | Buffer {
+function normalise(v: unknown): string | number | null {
   if (v === null || v === undefined) return null;
   if (typeof v === "boolean") return v ? 1 : 0;
   if (typeof v === "number" || typeof v === "string") return v;

@@ -25,10 +25,10 @@ export default async function RecoveryPage({
 }) {
   const params = await searchParams;
   const day = today();
-  const readiness = readinessFor(day);
-  const load = trainingLoad(day);
-  const logs = listRecovery(45);
-  const existing = recoveryFor(day);
+  const readiness = await readinessFor(day);
+  const load = await trainingLoad(day);
+  const logs = await listRecovery(45);
+  const existing = await recoveryFor(day);
 
   const sleepLogs = logs.filter((l) => l.sleep_hours !== null);
   const avgSleep =

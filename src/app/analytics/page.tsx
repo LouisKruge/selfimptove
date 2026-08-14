@@ -41,23 +41,23 @@ export const metadata = { title: "Analytics" };
 
 export default async function AnalyticsPage() {
   const day = today();
-  const season = activeSeason(day);
+  const season = await activeSeason(day);
   const weights = weightsFromSeason(season);
-  const trajectories = pillarTrajectories(28, day);
-  const overall = overallTrajectory(28, day);
-  const balance = balanceNow(28, day);
-  const history = scoreHistory(90, day);
+  const trajectories = await pillarTrajectories(28, day);
+  const overall = await overallTrajectory(28, day);
+  const balance = await balanceNow(28, day);
+  const history = await scoreHistory(90, day);
 
-  const week = averageScores(addDays(day, -6), day);
-  const month = averageScores(addDays(day, -29), day);
-  const quarter = averageScores(addDays(day, -89), day);
+  const week = await averageScores(addDays(day, -6), day);
+  const month = await averageScores(addDays(day, -29), day);
+  const quarter = await averageScores(addDays(day, -89), day);
 
-  const business = businessDashboard(day);
-  const finance = financeDashboard(day);
-  const body = bodyDashboard(day);
-  const running = runningOverview(day);
-  const character = characterDashboard(day);
-  const learning = learningStats(day);
+  const business = await businessDashboard(day);
+  const finance = await financeDashboard(day);
+  const body = await bodyDashboard(day);
+  const running = await runningOverview(day);
+  const character = await characterDashboard(day);
+  const learning = await learningStats(day);
 
   return (
     <div className="space-y-10">
@@ -88,7 +88,7 @@ export default async function AnalyticsPage() {
               </div>
               <p className="mt-2.5 text-[0.6875rem] text-ink-faint">{overall.detail}</p>
             </div>
-            <Sparkline points={scoreSeries("overall", 90, day).map((s) => s.value)} width={320} height={56} />
+            <Sparkline points={(await scoreSeries("overall", 90, day)).map((s) => s.value)} width={320} height={56} />
           </div>
         </PanelBody>
       </Panel>
@@ -190,7 +190,7 @@ export default async function AnalyticsPage() {
             <LineChart
               height={120}
               showZero={false}
-              points={scoreSeries("overall", 90, day).map((s) => ({
+              points={(await scoreSeries("overall", 90, day)).map((s) => ({
                 label: formatDayShort(s.date),
                 value: s.value,
               }))}

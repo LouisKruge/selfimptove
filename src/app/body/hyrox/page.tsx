@@ -29,7 +29,7 @@ export default async function HyroxPage({
 }) {
   const params = await searchParams;
   const day = today();
-  const o = hyroxOverview();
+  const o = await hyroxOverview();
 
   const measured = o.profiles.filter((p) => p.samples > 0);
   const worstGap = [...measured]

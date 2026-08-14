@@ -33,13 +33,13 @@ export interface Alert {
  * Derives the alerts worth showing right now. Every alert is a fact about
  * recorded data plus a place to act on it. Nothing is emitted "just in case".
  */
-export function computeAlerts(day: DayString = today()): Alert[] {
+export async function computeAlerts(day: DayString = today()): Promise<Alert[]> {
   const alerts: Alert[] = [];
 
   /* ------------------------------------------------------------- mission */
-  const mission = primaryMission();
+  const mission = await primaryMission();
   if (mission) {
-    const progress = computeMissionProgress(mission, day);
+    const progress = await computeMissionProgress(mission, day);
     if (progress.schedule === "BEHIND" || progress.schedule === "AT_RISK") {
       alerts.push({
         key: `mission-behind:${mission.id}:${startOfWeek(day)}`,
@@ -69,7 +69,7 @@ export function computeAlerts(day: DayString = today()): Alert[] {
   }
 
   /* --------------------------------------------------------------- tasks */
-  const flagged = flagTasks(openTasks(), day);
+  const flagged = flagTasks(await openTasks(), day);
   const overdue = flagged.filter((f) => f.flags.includes("OVERDUE"));
   if (overdue.length > 0) {
     alerts.push({
@@ -90,7 +90,7 @@ export function computeAlerts(day: DayString = today()): Alert[] {
       href: "/today",
     });
   }
-  const load = dayLoad(day);
+  const load = await dayLoad(day);
   if (load.overloaded) {
     alerts.push({
       key: `overloaded:${day}`,
@@ -102,7 +102,7 @@ export function computeAlerts(day: DayString = today()): Alert[] {
   }
 
   /* ---------------------------------------------------------------- body */
-  const bodyState = bodyDashboard(day);
+  const bodyState = await bodyDashboard(day);
   const plannedToday = bodyState.todaySessions.filter(
     (s) => s.status === "PLANNED" || s.status === "IN_PROGRESS",
   );
@@ -124,7 +124,7 @@ export function computeAlerts(day: DayString = today()): Alert[] {
       href: "/body/training",
     });
   }
-  const nut = nutritionDay(day);
+  const nut = await nutritionDay(day);
   if (nut.target && nut.log && nut.proteinPct !== null && nut.proteinPct < 80) {
     alerts.push({
       key: `protein:${day}`,
@@ -143,7 +143,7 @@ export function computeAlerts(day: DayString = today()): Alert[] {
       href: "/body/nutrition",
     });
   }
-  for (const pr of recordsOnDate(day)) {
+  for (const pr of await recordsOnDate(day)) {
     alerts.push({
       key: `pr:${pr.id}`,
       severity: "WIN",
@@ -154,7 +154,7 @@ export function computeAlerts(day: DayString = today()): Alert[] {
   }
 
   /* ------------------------------------------------------------ business */
-  const pipe = pipeline();
+  const pipe = await pipeline();
   if (pipe.totalOpen === 0) {
     alerts.push({
       key: `empty-pipeline:${startOfWeek(day)}`,
@@ -172,12 +172,12 @@ export function computeAlerts(day: DayString = today()): Alert[] {
       href: "/business/sales",
     });
   }
-  const staleLeads = scalar(
-    `SELECT COUNT(*) AS v FROM leads
+  const staleLeads = await scalar(
+      `SELECT COUNT(*) AS v FROM leads
       WHERE stage NOT IN ('LOST','RETAINED','CUSTOMER')
         AND next_action_date IS NOT NULL AND next_action_date < ?`,
-    [day],
-  );
+      [day],
+    );
   if (staleLeads > 0) {
     alerts.push({
       key: `stale-leads:${day}`,
@@ -189,8 +189,8 @@ export function computeAlerts(day: DayString = today()): Alert[] {
   }
 
   /* ------------------------------------------------------------- finance */
-  if (scalar("SELECT COUNT(*) AS v FROM accounts") > 0) {
-    const f30 = forecast(30, day);
+  if (await scalar("SELECT COUNT(*) AS v FROM accounts") > 0) {
+    const f30 = await forecast(30, day);
     if (f30.shortfall) {
       alerts.push({
         key: `cash-shortfall:${f30.shortfall.date}`,
@@ -203,7 +203,7 @@ export function computeAlerts(day: DayString = today()): Alert[] {
   }
 
   /* ----------------------------------------------------------- character */
-  const promises = openPromises().filter((p) => p.date < day);
+  const promises = (await openPromises()).filter((p) => p.date < day);
   if (promises.length > 0) {
     alerts.push({
       key: `unresolved-promises:${day}`,
@@ -213,7 +213,7 @@ export function computeAlerts(day: DayString = today()): Alert[] {
       href: "/character",
     });
   }
-  for (const d of coolingDecisions()) {
+  for (const d of await coolingDecisions()) {
     if (d.cooling.released) {
       alerts.push({
         key: `cooling-released:${d.id}`,
@@ -227,10 +227,10 @@ export function computeAlerts(day: DayString = today()): Alert[] {
 
   /* ------------------------------------------------------------ reviews */
   const weekKey = isoWeekKey(day);
-  const weeklyDone = get<{ status: string }>(
-    "SELECT status FROM reviews WHERE kind = 'WEEKLY' AND period_start = ?",
-    [startOfWeek(addDays(day, -7))],
-  );
+  const weeklyDone = await get<{ status: string }>(
+      "SELECT status FROM reviews WHERE kind = 'WEEKLY' AND period_start = ?",
+      [startOfWeek(addDays(day, -7))],
+    );
   const dow = new Date(`${day}T12:00:00Z`).getUTCDay();
   if ((dow === 0 || dow === 1) && (!weeklyDone || weeklyDone.status !== "COMPLETE")) {
     alerts.push({
@@ -242,10 +242,10 @@ export function computeAlerts(day: DayString = today()): Alert[] {
     });
   }
   const monthStart = startOfMonth(day);
-  const monthlyDone = get<{ status: string }>(
-    "SELECT status FROM reviews WHERE kind = 'MONTHLY' AND period_start = ?",
-    [startOfMonth(addDays(monthStart, -1))],
-  );
+  const monthlyDone = await get<{ status: string }>(
+      "SELECT status FROM reviews WHERE kind = 'MONTHLY' AND period_start = ?",
+      [startOfMonth(addDays(monthStart, -1))],
+    );
   if (Number(day.slice(8, 10)) <= 3 && (!monthlyDone || monthlyDone.status !== "COMPLETE")) {
     alerts.push({
       key: `monthly-review:${monthStart}`,
@@ -257,7 +257,7 @@ export function computeAlerts(day: DayString = today()): Alert[] {
   }
 
   /* ------------------------------------------------------------- balance */
-  for (const finding of balanceNow(28, day).findings) {
+  for (const finding of (await balanceNow(28, day)).findings) {
     if (finding.severity === "INFO") continue;
     alerts.push({
       key: `balance:${finding.headline}:${startOfWeek(day)}`,
@@ -278,46 +278,46 @@ const SEVERITY_RANK: Record<Notification["severity"], number> = {
   INFO: 3,
 };
 
-export function sortedAlerts(day: DayString = today()): Alert[] {
-  return computeAlerts(day).sort(
+export async function sortedAlerts(day: DayString = today()): Promise<Alert[]> {
+  return (await computeAlerts(day)).sort(
     (a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity],
   );
 }
 
 /** Persists alerts so dismissals stick. Deduped by key. */
-export function syncNotifications(day: DayString = today()): Notification[] {
-  const alerts = sortedAlerts(day);
+export async function syncNotifications(day: DayString = today()): Promise<Notification[]> {
+  const alerts = await sortedAlerts(day);
   for (const alert of alerts) {
-    const existing = get<Notification>("SELECT * FROM notifications WHERE key = ?", [alert.key]);
+    const existing = await get<Notification>("SELECT * FROM notifications WHERE key = ?", [alert.key]);
     if (existing) {
-      update("notifications", existing.id, {
-        severity: alert.severity,
-        title: alert.title,
-        body: alert.body,
-        href: alert.href,
-      });
+      await update("notifications", existing.id, {
+                severity: alert.severity,
+                title: alert.title,
+                body: alert.body,
+                href: alert.href,
+              });
     } else {
-      insert("notifications", {
-        key: alert.key,
-        severity: alert.severity,
-        title: alert.title,
-        body: alert.body,
-        href: alert.href,
-      });
+      await insert("notifications", {
+                key: alert.key,
+                severity: alert.severity,
+                title: alert.title,
+                body: alert.body,
+                href: alert.href,
+              });
     }
   }
   const keys = new Set(alerts.map((a) => a.key));
-  return listNotifications().filter((n) => keys.has(n.key));
+  return (await listNotifications()).filter((n) => keys.has(n.key));
 }
 
-export function listNotifications(): Notification[] {
-  return all<Notification>(
-    `SELECT * FROM notifications WHERE dismissed_at IS NULL
+export async function listNotifications(): Promise<Notification[]> {
+  return await all<Notification>(
+      `SELECT * FROM notifications WHERE dismissed_at IS NULL
       ORDER BY CASE severity WHEN 'CRITICAL' THEN 0 WHEN 'ATTENTION' THEN 1
                              WHEN 'WIN' THEN 2 ELSE 3 END, created_at DESC`,
-  );
+    );
 }
 
-export function dismissNotification(id: string): void {
-  update("notifications", id, { dismissed_at: nowIso() });
+export async function dismissNotification(id: string): Promise<void> {
+  await update("notifications", id, { dismissed_at: nowIso() });
 }

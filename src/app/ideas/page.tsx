@@ -28,7 +28,7 @@ export default async function IdeasPage({
   searchParams: Promise<{ quick?: string }>;
 }) {
   const params = await searchParams;
-  const ideas = ideaViews();
+  const ideas = await ideaViews();
 
   const byStage = new Map<string, typeof ideas>();
   for (const i of ideas) {

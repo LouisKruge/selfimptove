@@ -31,12 +31,12 @@ interface Row {
 }
 
 export default async function StrengthPage() {
-  const exercises = listExercises();
-  const records = recentRecords(10);
+  const exercises = await listExercises();
+  const records = await recentRecords(10);
 
   // One pass over the set history rather than a query per exercise.
-  const stats = all<Row>(
-    `SELECT e.id, e.name, e.muscle_group, e.category,
+  const stats = await all<Row>(
+      `SELECT e.id, e.name, e.muscle_group, e.category,
             COUNT(DISTINCT ws.date) AS sessions,
             MAX(ws.date) AS last_date,
             MAX(ws.weight_kg) AS best_weight,
@@ -46,7 +46,7 @@ export default async function StrengthPage() {
       WHERE e.archived = 0
       GROUP BY e.id
       ORDER BY sessions DESC, e.name`,
-  );
+    );
 
   const trained = stats.filter((s) => s.sessions > 0);
   const untrained = stats.filter((s) => s.sessions === 0);

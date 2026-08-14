@@ -41,7 +41,7 @@ export function ReviewForm({
     <ActionForm
       action={async (form) => {
         form.set("id", reviewId);
-        return saveReview(form);
+        return await saveReview(form);
       }}
       className="space-y-6"
     >

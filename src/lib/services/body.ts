@@ -41,30 +41,30 @@ import type {
 
 /* --------------------------------------------------------------- exercises */
 
-export function listExercises(includeArchived = false): Exercise[] {
-  return all<Exercise>(
-    `SELECT * FROM exercises ${includeArchived ? "" : "WHERE archived = 0"} ORDER BY category, name`,
-  );
+export async function listExercises(includeArchived = false): Promise<Exercise[]> {
+  return await all<Exercise>(
+      `SELECT * FROM exercises ${includeArchived ? "" : "WHERE archived = 0"} ORDER BY category, name`,
+    );
 }
 
-export function getExercise(id: string): Exercise | undefined {
-  return byId<Exercise>("exercises", id);
+export async function getExercise(id: string): Promise<Exercise | undefined> {
+  return await byId<Exercise>("exercises", id);
 }
 
-export function exerciseByName(name: string): Exercise | undefined {
-  return get<Exercise>("SELECT * FROM exercises WHERE name = ?", [name]);
+export async function exerciseByName(name: string): Promise<Exercise | undefined> {
+  return await get<Exercise>("SELECT * FROM exercises WHERE name = ?", [name]);
 }
 
 /* ------------------------------------------------------- workout templates */
 
-export function listWorkouts(includeArchived = false): Workout[] {
-  return all<Workout>(
-    `SELECT * FROM workouts ${includeArchived ? "" : "WHERE archived = 0"} ORDER BY type, name`,
-  );
+export async function listWorkouts(includeArchived = false): Promise<Workout[]> {
+  return await all<Workout>(
+      `SELECT * FROM workouts ${includeArchived ? "" : "WHERE archived = 0"} ORDER BY type, name`,
+    );
 }
 
-export function getWorkout(id: string): Workout | undefined {
-  return byId<Workout>("workouts", id);
+export async function getWorkout(id: string): Promise<Workout | undefined> {
+  return await byId<Workout>("workouts", id);
 }
 
 export interface WorkoutDetail {
@@ -72,79 +72,81 @@ export interface WorkoutDetail {
   exercises: Array<WorkoutExercise & { exercise: Exercise }>;
 }
 
-export function workoutDetail(id: string): WorkoutDetail | undefined {
-  const workout = getWorkout(id);
+export async function workoutDetail(id: string): Promise<WorkoutDetail | undefined> {
+  const workout = await getWorkout(id);
   if (!workout) return undefined;
-  const rows = all<WorkoutExercise>(
-    "SELECT * FROM workout_exercises WHERE workout_id = ? ORDER BY sort_order",
-    [id],
-  );
-  const exercises = rows
-    .map((row) => {
-      const exercise = getExercise(row.exercise_id);
-      return exercise ? { ...row, exercise } : null;
-    })
-    .filter((v): v is WorkoutExercise & { exercise: Exercise } => v !== null);
+  const rows = await all<WorkoutExercise>(
+      "SELECT * FROM workout_exercises WHERE workout_id = ? ORDER BY sort_order",
+      [id],
+    );
+  const exercises = (
+    await Promise.all(
+      rows.map(async (row) => {
+        const exercise = await getExercise(row.exercise_id);
+        return exercise ? { ...row, exercise } : null;
+      }),
+    )
+  ).filter((v): v is WorkoutExercise & { exercise: Exercise } => v !== null);
   return { workout, exercises };
 }
 
 /* ---------------------------------------------------------------- sessions */
 
-export function getSession(id: string): WorkoutSession | undefined {
-  return byId<WorkoutSession>("workout_sessions", id);
+export async function getSession(id: string): Promise<WorkoutSession | undefined> {
+  return await byId<WorkoutSession>("workout_sessions", id);
 }
 
-export function sessionsForDay(day: DayString): WorkoutSession[] {
-  return all<WorkoutSession>("SELECT * FROM workout_sessions WHERE date = ? ORDER BY created_at", [
-    day,
-  ]);
+export async function sessionsForDay(day: DayString): Promise<WorkoutSession[]> {
+  return await all<WorkoutSession>("SELECT * FROM workout_sessions WHERE date = ? ORDER BY created_at", [
+      day,
+    ]);
 }
 
-export function sessionsInRange(from: DayString, to: DayString): WorkoutSession[] {
-  return all<WorkoutSession>(
-    "SELECT * FROM workout_sessions WHERE date BETWEEN ? AND ? ORDER BY date, created_at",
-    [from, to],
-  );
+export async function sessionsInRange(from: DayString, to: DayString): Promise<WorkoutSession[]> {
+  return await all<WorkoutSession>(
+      "SELECT * FROM workout_sessions WHERE date BETWEEN ? AND ? ORDER BY date, created_at",
+      [from, to],
+    );
 }
 
-export function recentSessions(limit = 20): WorkoutSession[] {
-  return all<WorkoutSession>(
-    "SELECT * FROM workout_sessions ORDER BY date DESC, created_at DESC LIMIT ?",
-    [limit],
-  );
+export async function recentSessions(limit = 20): Promise<WorkoutSession[]> {
+  return await all<WorkoutSession>(
+      "SELECT * FROM workout_sessions ORDER BY date DESC, created_at DESC LIMIT ?",
+      [limit],
+    );
 }
 
-export function activeSession(): WorkoutSession | undefined {
-  return get<WorkoutSession>(
-    "SELECT * FROM workout_sessions WHERE status = 'IN_PROGRESS' ORDER BY started_at DESC LIMIT 1",
-  );
+export async function activeSession(): Promise<WorkoutSession | undefined> {
+  return await get<WorkoutSession>(
+      "SELECT * FROM workout_sessions WHERE status = 'IN_PROGRESS' ORDER BY started_at DESC LIMIT 1",
+    );
 }
 
-export function sessionSets(sessionId: string): WorkoutSet[] {
-  return all<WorkoutSet>(
-    "SELECT * FROM workout_sets WHERE session_id = ? ORDER BY set_index",
-    [sessionId],
-  );
+export async function sessionSets(sessionId: string): Promise<WorkoutSet[]> {
+  return await all<WorkoutSet>(
+      "SELECT * FROM workout_sets WHERE session_id = ? ORDER BY set_index",
+      [sessionId],
+    );
 }
 
 /** The most recent completed performance of an exercise strictly before `before`. */
-export function lastPerformance(
+export async function lastPerformance(
   exerciseId: string,
   before: DayString,
   excludeSessionId?: string,
-): { date: DayString; sets: WorkoutSet[] } | null {
-  const row = get<{ date: string; session_id: string }>(
-    `SELECT date, session_id FROM workout_sets
+): Promise<{ date: DayString; sets: WorkoutSet[] } | null> {
+  const row = await get<{ date: string; session_id: string }>(
+      `SELECT date, session_id FROM workout_sets
       WHERE exercise_id = ? AND date < ? AND is_warmup = 0
         ${excludeSessionId ? "AND session_id <> ?" : ""}
       ORDER BY date DESC, created_at DESC LIMIT 1`,
-    excludeSessionId ? [exerciseId, before, excludeSessionId] : [exerciseId, before],
-  );
+      excludeSessionId ? [exerciseId, before, excludeSessionId] : [exerciseId, before],
+    );
   if (!row) return null;
-  const sets = all<WorkoutSet>(
-    "SELECT * FROM workout_sets WHERE session_id = ? AND exercise_id = ? ORDER BY set_index",
-    [row.session_id, exerciseId],
-  );
+  const sets = await all<WorkoutSet>(
+      "SELECT * FROM workout_sets WHERE session_id = ? AND exercise_id = ? ORDER BY set_index",
+      [row.session_id, exerciseId],
+    );
   return { date: row.date, sets };
 }
 
@@ -167,22 +169,22 @@ export interface SessionDetail {
   hyrox: HyroxDetail | null;
 }
 
-export function sessionDetail(sessionId: string): SessionDetail | undefined {
-  const session = getSession(sessionId);
+export async function sessionDetail(sessionId: string): Promise<SessionDetail | undefined> {
+  const session = await getSession(sessionId);
   if (!session) return undefined;
 
-  const rows = all<SessionExercise>(
-    "SELECT * FROM session_exercises WHERE session_id = ? ORDER BY sort_order",
-    [sessionId],
-  );
-  const allSets = sessionSets(sessionId);
+  const rows = await all<SessionExercise>(
+      "SELECT * FROM session_exercises WHERE session_id = ? ORDER BY sort_order",
+      [sessionId],
+    );
+  const allSets = await sessionSets(sessionId);
 
   const exercises: LiveExercise[] = [];
   for (const row of rows) {
-    const exercise = getExercise(row.exercise_id);
+    const exercise = await getExercise(row.exercise_id);
     if (!exercise) continue;
     const sets = allSets.filter((s) => s.session_exercise_id === row.id);
-    const last = lastPerformance(row.exercise_id, session.date, sessionId);
+    const last = await lastPerformance(row.exercise_id, session.date, sessionId);
     exercises.push({
       sessionExercise: row,
       exercise,
@@ -202,8 +204,8 @@ export function sessionDetail(sessionId: string): SessionDetail | undefined {
     totalSets,
     completedSets,
     volumeKg: summariseSets(allSets).volumeKg,
-    run: runForSession(sessionId),
-    hyrox: hyroxForSession(sessionId),
+    run: await runForSession(sessionId),
+    hyrox: await hyroxForSession(sessionId),
   };
 }
 
@@ -211,7 +213,7 @@ export function sessionDetail(sessionId: string): SessionDetail | undefined {
 
 export interface ExerciseHistory {
   exercise: Exercise;
-  sessions: ReturnType<typeof groupSetsBySession>;
+  sessions: Awaited<ReturnType<typeof groupSetsBySession>>;
   bestWeightKg: number | null;
   bestReps: number | null;
   bestVolumeKg: number | null;
@@ -225,14 +227,14 @@ export interface ExerciseHistory {
   records: PersonalRecord[];
 }
 
-export function exerciseHistory(exerciseId: string, limitSessions = 40): ExerciseHistory | undefined {
-  const exercise = getExercise(exerciseId);
+export async function exerciseHistory(exerciseId: string, limitSessions = 40): Promise<ExerciseHistory | undefined> {
+  const exercise = await getExercise(exerciseId);
   if (!exercise) return undefined;
 
-  const sets = all<WorkoutSet>(
-    "SELECT * FROM workout_sets WHERE exercise_id = ? AND is_warmup = 0 ORDER BY date DESC, set_index",
-    [exerciseId],
-  );
+  const sets = await all<WorkoutSet>(
+      "SELECT * FROM workout_sets WHERE exercise_id = ? AND is_warmup = 0 ORDER BY date DESC, set_index",
+      [exerciseId],
+    );
   const sessions = groupSetsBySession(sets).slice(0, limitSessions);
 
   const weights = sets.map((s) => s.weight_kg ?? 0).filter((v) => v > 0);
@@ -270,70 +272,70 @@ export function exerciseHistory(exerciseId: string, limitSessions = 40): Exercis
     e1rmSeries: ordered
       .map((s) => ({ date: s.date, value: s.summary.bestE1RM }))
       .filter((p): p is { date: string; value: number } => p.value !== null),
-    records: all<PersonalRecord>(
-      "SELECT * FROM personal_records WHERE exercise_id = ? ORDER BY date DESC",
-      [exerciseId],
-    ),
+    records: await all<PersonalRecord>(
+          "SELECT * FROM personal_records WHERE exercise_id = ? ORDER BY date DESC",
+          [exerciseId],
+        ),
   };
 }
 
 /* ---------------------------------------------------------------- records */
 
-export function recentRecords(limit = 12): Array<PersonalRecord & { exerciseName: string | null }> {
-  return all<PersonalRecord & { exerciseName: string | null }>(
-    `SELECT pr.*, e.name AS exerciseName
+export async function recentRecords(limit = 12): Promise<Array<PersonalRecord & { exerciseName: string | null }>> {
+  return await all<PersonalRecord & { exerciseName: string | null }>(
+      `SELECT pr.*, e.name AS exerciseName
        FROM personal_records pr
        LEFT JOIN exercises e ON e.id = pr.exercise_id
       ORDER BY pr.date DESC, pr.created_at DESC LIMIT ?`,
-    [limit],
-  );
+      [limit],
+    );
 }
 
-export function recordsOnDate(day: DayString): Array<PersonalRecord & { exerciseName: string | null }> {
-  return all<PersonalRecord & { exerciseName: string | null }>(
-    `SELECT pr.*, e.name AS exerciseName
+export async function recordsOnDate(day: DayString): Promise<Array<PersonalRecord & { exerciseName: string | null }>> {
+  return await all<PersonalRecord & { exerciseName: string | null }>(
+      `SELECT pr.*, e.name AS exerciseName
        FROM personal_records pr
        LEFT JOIN exercises e ON e.id = pr.exercise_id
       WHERE pr.date = ? ORDER BY pr.created_at DESC`,
-    [day],
-  );
+      [day],
+    );
 }
 
 /* ------------------------------------------------------------------ runs */
 
-export function listRuns(limit = 50): Run[] {
-  return all<Run>("SELECT * FROM runs ORDER BY date DESC, created_at DESC LIMIT ?", [limit]);
+export async function listRuns(limit = 50): Promise<Run[]> {
+  return await all<Run>("SELECT * FROM runs ORDER BY date DESC, created_at DESC LIMIT ?", [limit]);
 }
 
-export function getRun(id: string): Run | undefined {
-  return byId<Run>("runs", id);
+export async function getRun(id: string): Promise<Run | undefined> {
+  return await byId<Run>("runs", id);
 }
 
 export interface RunDetail {
   run: Run;
   intervals: RunInterval[];
-  analysis: ReturnType<typeof analyseIntervals>;
+  analysis: Awaited<ReturnType<typeof analyseIntervals>>;
 }
 
-export function runDetail(id: string): RunDetail | undefined {
-  const run = getRun(id);
+export async function runDetail(id: string): Promise<RunDetail | undefined> {
+  const run = await getRun(id);
   if (!run) return undefined;
-  const intervals = all<RunInterval>(
-    "SELECT * FROM run_intervals WHERE run_id = ? ORDER BY interval_index",
-    [id],
-  );
+  const intervals = await all<RunInterval>(
+      "SELECT * FROM run_intervals WHERE run_id = ? ORDER BY interval_index",
+      [id],
+    );
   return { run, intervals, analysis: analyseIntervals(intervals) };
 }
 
-export function runForSession(sessionId: string): RunDetail | null {
-  const run = get<Run>("SELECT * FROM runs WHERE session_id = ?", [sessionId]);
+export async function runForSession(sessionId: string): Promise<RunDetail | null> {
+  const run = await get<Run>("SELECT * FROM runs WHERE session_id = ?", [sessionId]);
   if (!run) return null;
-  return runDetail(run.id) ?? null;
+  return await runDetail(run.id) ?? null;
 }
 
 export interface RunningOverview {
   runs: Run[];
-  weeks: ReturnType<typeof weeklyMileage>;
+  weeks: Awaited<ReturnType<typeof weeklyMileage>>;
   totalDistance30: number;
   totalTime30: number;
   avgPace30: number | null;
@@ -341,8 +343,8 @@ export interface RunningOverview {
   longest: Run | null;
 }
 
-export function runningOverview(day: DayString = today()): RunningOverview {
-  const runs = listRuns(120);
+export async function runningOverview(day: DayString = today()): Promise<RunningOverview> {
+  const runs = await listRuns(120);
   const from30 = addDays(day, -29);
   const recent = runs.filter((r) => r.date >= from30 && r.date <= day);
   const paces = recent
@@ -368,48 +370,48 @@ export function runningOverview(day: DayString = today()): RunningOverview {
 
 /* ----------------------------------------------------------------- hyrox */
 
-export function listHyroxSessions(limit = 30): HyroxSession[] {
-  return all<HyroxSession>("SELECT * FROM hyrox_sessions ORDER BY date DESC LIMIT ?", [limit]);
+export async function listHyroxSessions(limit = 30): Promise<HyroxSession[]> {
+  return await all<HyroxSession>("SELECT * FROM hyrox_sessions ORDER BY date DESC LIMIT ?", [limit]);
 }
 
-export function getHyroxSession(id: string): HyroxSession | undefined {
-  return byId<HyroxSession>("hyrox_sessions", id);
+export async function getHyroxSession(id: string): Promise<HyroxSession | undefined> {
+  return await byId<HyroxSession>("hyrox_sessions", id);
 }
 
 export interface HyroxDetail {
   session: HyroxSession;
   stations: HyroxStation[];
-  analysis: ReturnType<typeof analyseSimulation>;
+  analysis: Awaited<ReturnType<typeof analyseSimulation>>;
 }
 
-export function hyroxDetail(id: string): HyroxDetail | undefined {
-  const session = getHyroxSession(id);
+export async function hyroxDetail(id: string): Promise<HyroxDetail | undefined> {
+  const session = await getHyroxSession(id);
   if (!session) return undefined;
-  const stations = all<HyroxStation>(
-    "SELECT * FROM hyrox_stations WHERE hyrox_session_id = ? ORDER BY sequence",
-    [id],
-  );
-  return { session, stations, analysis: analyseSimulation(stations, allStationProfiles()) };
+  const stations = await all<HyroxStation>(
+      "SELECT * FROM hyrox_stations WHERE hyrox_session_id = ? ORDER BY sequence",
+      [id],
+    );
+  return { session, stations, analysis: analyseSimulation(stations, await allStationProfiles()) };
 }
 
-export function hyroxForSession(sessionId: string): HyroxDetail | null {
-  const row = get<HyroxSession>("SELECT * FROM hyrox_sessions WHERE session_id = ?", [sessionId]);
+export async function hyroxForSession(sessionId: string): Promise<HyroxDetail | null> {
+  const row = await get<HyroxSession>("SELECT * FROM hyrox_sessions WHERE session_id = ?", [sessionId]);
   if (!row) return null;
-  return hyroxDetail(row.id) ?? null;
+  return await hyroxDetail(row.id) ?? null;
 }
 
-export function allStationProfiles() {
-  const rows = all<{ station: HyroxStation["station"]; duration_sec: number | null; date: string }>(
-    `SELECT hs.station, hs.duration_sec, s.date
+export async function allStationProfiles() {
+  const rows = await all<{ station: HyroxStation["station"]; duration_sec: number | null; date: string }>(
+      `SELECT hs.station, hs.duration_sec, s.date
        FROM hyrox_stations hs
        JOIN hyrox_sessions s ON s.id = hs.hyrox_session_id`,
-  );
+    );
   return stationProfiles(rows);
 }
 
-export function hyroxOverview() {
-  const profiles = allStationProfiles();
-  const sessions = listHyroxSessions(30);
+export async function hyroxOverview() {
+  const profiles = await allStationProfiles();
+  const sessions = await listHyroxSessions(30);
   const sims = sessions.filter((s) => s.kind === "FULL_SIM" || s.kind === "RACE");
   return {
     profiles,
@@ -424,23 +426,23 @@ export function hyroxOverview() {
 
 /* ------------------------------------------------------------- nutrition */
 
-export function nutritionTargetFor(day: DayString = today()): NutritionTarget | undefined {
-  return get<NutritionTarget>(
-    "SELECT * FROM nutrition_targets WHERE effective_from <= ? ORDER BY effective_from DESC LIMIT 1",
-    [day],
-  );
+export async function nutritionTargetFor(day: DayString = today()): Promise<NutritionTarget | undefined> {
+  return await get<NutritionTarget>(
+      "SELECT * FROM nutrition_targets WHERE effective_from <= ? ORDER BY effective_from DESC LIMIT 1",
+      [day],
+    );
 }
 
-export function nutritionLogFor(day: DayString): NutritionLog | undefined {
-  return get<NutritionLog>("SELECT * FROM nutrition_logs WHERE date = ?", [day]);
+export async function nutritionLogFor(day: DayString): Promise<NutritionLog | undefined> {
+  return await get<NutritionLog>("SELECT * FROM nutrition_logs WHERE date = ?", [day]);
 }
 
-export function mealsFor(day: DayString): Meal[] {
-  return all<Meal>("SELECT * FROM meals WHERE date = ? ORDER BY logged_at", [day]);
+export async function mealsFor(day: DayString): Promise<Meal[]> {
+  return await all<Meal>("SELECT * FROM meals WHERE date = ? ORDER BY logged_at", [day]);
 }
 
-export function mealPresets(): MealPreset[] {
-  return all<MealPreset>("SELECT * FROM meal_presets ORDER BY use_count DESC, name LIMIT 24");
+export async function mealPresets(): Promise<MealPreset[]> {
+  return await all<MealPreset>("SELECT * FROM meal_presets ORDER BY use_count DESC, name LIMIT 24");
 }
 
 export interface NutritionDay {
@@ -448,14 +450,14 @@ export interface NutritionDay {
   log: NutritionLog | null;
   target: NutritionTarget | null;
   meals: Meal[];
-  remaining: ReturnType<typeof remaining> | null;
+  remaining: Awaited<ReturnType<typeof remaining>> | null;
   proteinPct: number | null;
   caloriePct: number | null;
 }
 
-export function nutritionDay(day: DayString = today()): NutritionDay {
-  const log = nutritionLogFor(day) ?? null;
-  const target = nutritionTargetFor(day) ?? null;
+export async function nutritionDay(day: DayString = today()): Promise<NutritionDay> {
+  const log = await nutritionLogFor(day) ?? null;
+  const target = await nutritionTargetFor(day) ?? null;
   const consumed = log ?? {
     calories: 0,
     protein_g: 0,
@@ -466,28 +468,28 @@ export function nutritionDay(day: DayString = today()): NutritionDay {
     date: day,
     log,
     target,
-    meals: mealsFor(day),
+    meals: await mealsFor(day),
     remaining: target ? remaining(consumed, target) : null,
     proteinPct: target && target.protein_g > 0 ? round((consumed.protein_g / target.protein_g) * 100, 0) : null,
     caloriePct: target && target.calories > 0 ? round((consumed.calories / target.calories) * 100, 0) : null,
   };
 }
 
-export function nutritionTrend(windowDays = 28, day: DayString = today()) {
+export async function nutritionTrend(windowDays = 28, day: DayString = today()) {
   const days = lastNDays(windowDays, day);
   const logs = new Map(
-    all<NutritionLog>("SELECT * FROM nutrition_logs WHERE date BETWEEN ? AND ?", [
-      days[0],
-      day,
-    ]).map((l) => [l.date, l]),
+    (await all<NutritionLog>("SELECT * FROM nutrition_logs WHERE date BETWEEN ? AND ?", [
+            days[0],
+            day,
+          ])).map((l) => [l.date, l]),
   );
   const weights = new Map(
-    all<BodyMeasurement>(
-      "SELECT * FROM body_measurements WHERE date BETWEEN ? AND ? AND weight_kg IS NOT NULL",
-      [days[0], day],
-    ).map((m) => [m.date, m.weight_kg]),
+    (await all<BodyMeasurement>(
+            "SELECT * FROM body_measurements WHERE date BETWEEN ? AND ? AND weight_kg IS NOT NULL",
+            [days[0], day],
+          )).map((m) => [m.date, m.weight_kg]),
   );
-  const target = nutritionTargetFor(day);
+  const target = await nutritionTargetFor(day);
 
   return analyseNutritionTrend({
     calories: days.map((d) => logs.get(d)?.calories ?? null),
@@ -502,12 +504,12 @@ export function nutritionTrend(windowDays = 28, day: DayString = today()) {
 
 /* --------------------------------------------------------- measurements */
 
-export function listMeasurements(limit = 200): BodyMeasurement[] {
-  return all<BodyMeasurement>("SELECT * FROM body_measurements ORDER BY date DESC LIMIT ?", [limit]);
+export async function listMeasurements(limit = 200): Promise<BodyMeasurement[]> {
+  return await all<BodyMeasurement>("SELECT * FROM body_measurements ORDER BY date DESC LIMIT ?", [limit]);
 }
 
-export function latestMeasurement(): BodyMeasurement | undefined {
-  return get<BodyMeasurement>("SELECT * FROM body_measurements ORDER BY date DESC LIMIT 1");
+export async function latestMeasurement(): Promise<BodyMeasurement | undefined> {
+  return await get<BodyMeasurement>("SELECT * FROM body_measurements ORDER BY date DESC LIMIT 1");
 }
 
 export type MeasurementField =
@@ -541,8 +543,8 @@ const FIELDS: Array<{ field: MeasurementField; label: string; unit: string }> = 
   { field: "neck_cm", label: "Neck", unit: "cm" },
 ];
 
-export function compositionComparisons(day: DayString = today()): CompositionComparison[] {
-  const rows = listMeasurements(500);
+export async function compositionComparisons(day: DayString = today()): Promise<CompositionComparison[]> {
+  const rows = await listMeasurements(500);
   if (rows.length === 0) {
     return FIELDS.map((f) => ({ ...f, current: null, windows: [] }));
   }
@@ -586,31 +588,31 @@ export function compositionComparisons(day: DayString = today()): CompositionCom
 
 /* ---------------------------------------------------------------- recovery */
 
-export function recoveryFor(day: DayString): RecoveryLog | undefined {
-  return get<RecoveryLog>("SELECT * FROM recovery_logs WHERE date = ?", [day]);
+export async function recoveryFor(day: DayString): Promise<RecoveryLog | undefined> {
+  return await get<RecoveryLog>("SELECT * FROM recovery_logs WHERE date = ?", [day]);
 }
 
-export function listRecovery(limit = 60): RecoveryLog[] {
-  return all<RecoveryLog>("SELECT * FROM recovery_logs ORDER BY date DESC LIMIT ?", [limit]);
+export async function listRecovery(limit = 60): Promise<RecoveryLog[]> {
+  return await all<RecoveryLog>("SELECT * FROM recovery_logs ORDER BY date DESC LIMIT ?", [limit]);
 }
 
-export function readinessFor(day: DayString = today()): ReadinessResult {
-  const log = recoveryFor(day);
-  const recentRpe = all<{ session_rpe: number | null }>(
-    `SELECT session_rpe FROM workout_sessions
+export async function readinessFor(day: DayString = today()): Promise<ReadinessResult> {
+  const log = await recoveryFor(day);
+  const recentRpe = (await all<{ session_rpe: number | null }>(
+      `SELECT session_rpe FROM workout_sessions
       WHERE date BETWEEN ? AND ? AND status = 'COMPLETED' AND session_rpe IS NOT NULL
       ORDER BY date DESC LIMIT 3`,
-    [addDays(day, -6), day],
-  ).map((r) => r.session_rpe as number);
+      [addDays(day, -6), day],
+    )).map((r) => r.session_rpe as number);
 
   // Consecutive training days immediately before today.
   let consecutive = 0;
   for (let i = 1; i <= 10; i++) {
     const d = addDays(day, -i);
-    const trained = scalar(
-      "SELECT COUNT(*) AS v FROM workout_sessions WHERE date = ? AND status = 'COMPLETED'",
-      [d],
-    );
+    const trained = await scalar(
+          "SELECT COUNT(*) AS v FROM workout_sessions WHERE date = ? AND status = 'COMPLETED'",
+          [d],
+        );
     if (trained > 0) consecutive++;
     else break;
   }
@@ -628,26 +630,26 @@ export function readinessFor(day: DayString = today()): ReadinessResult {
 
 /* ----------------------------------------------------------- training load */
 
-export function trainingLoad(day: DayString = today()) {
-  const sessions = all<WorkoutSession>(
-    "SELECT * FROM workout_sessions WHERE date BETWEEN ? AND ? AND status = 'COMPLETED'",
-    [addDays(day, -34), day],
-  );
+export async function trainingLoad(day: DayString = today()) {
+  const sessions = await all<WorkoutSession>(
+      "SELECT * FROM workout_sessions WHERE date BETWEEN ? AND ? AND status = 'COMPLETED'",
+      [addDays(day, -34), day],
+    );
   const points = sessions
     .map((s) => ({ date: s.date, load: sessionLoad(s.duration_min, s.session_rpe) }))
     .filter((p): p is { date: string; load: number } => p.load !== null);
   return analyseLoad(points, day);
 }
 
-export function weeklyVolumeByGroup(day: DayString = today()) {
+export async function weeklyVolumeByGroup(day: DayString = today()) {
   const from = startOfWeek(day);
-  const rows = all<{ muscle_group: string | null; weight_kg: number | null; reps: number | null }>(
-    `SELECT e.muscle_group, ws.weight_kg, ws.reps
+  const rows = await all<{ muscle_group: string | null; weight_kg: number | null; reps: number | null }>(
+      `SELECT e.muscle_group, ws.weight_kg, ws.reps
        FROM workout_sets ws
        JOIN exercises e ON e.id = ws.exercise_id
       WHERE ws.date BETWEEN ? AND ? AND ws.is_warmup = 0`,
-    [from, endOfWeek(day)],
-  );
+      [from, endOfWeek(day)],
+    );
   return volumeByMuscleGroup(rows);
 }
 
@@ -660,12 +662,12 @@ export interface CalendarDay {
   isRestDay: boolean;
 }
 
-export function trainingWeek(day: DayString = today()): CalendarDay[] {
+export async function trainingWeek(day: DayString = today()): Promise<CalendarDay[]> {
   const from = startOfWeek(day);
   const to = endOfWeek(day);
-  const sessions = sessionsInRange(from, to);
+  const sessions = await sessionsInRange(from, to);
   const recovery = new Map(
-    all<RecoveryLog>("SELECT * FROM recovery_logs WHERE date BETWEEN ? AND ?", [from, to]).map(
+    (await all<RecoveryLog>("SELECT * FROM recovery_logs WHERE date BETWEEN ? AND ?", [from, to])).map(
       (r) => [r.date, r],
     ),
   );
@@ -689,34 +691,34 @@ export interface BodyDashboard {
   todaySessions: WorkoutSession[];
   activeSession: WorkoutSession | undefined;
   week: CalendarDay[];
-  load: ReturnType<typeof analyseLoad>;
+  load: Awaited<ReturnType<typeof analyseLoad>>;
   readiness: ReadinessResult;
   nutrition: NutritionDay;
-  nutritionTrend: ReturnType<typeof analyseNutritionTrend>;
+  nutritionTrend: Awaited<ReturnType<typeof analyseNutritionTrend>>;
   latestMeasurement: BodyMeasurement | undefined;
   records: Array<PersonalRecord & { exerciseName: string | null }>;
-  volumeByGroup: ReturnType<typeof volumeByMuscleGroup>;
+  volumeByGroup: Awaited<ReturnType<typeof volumeByMuscleGroup>>;
   weeklyDistanceM: number;
   sessionsThisWeek: number;
 }
 
-export function bodyDashboard(day: DayString = today()): BodyDashboard {
-  const week = trainingWeek(day);
-  const weekDistance = scalar(
-    "SELECT COALESCE(SUM(distance_m), 0) AS v FROM runs WHERE date BETWEEN ? AND ?",
-    [startOfWeek(day), endOfWeek(day)],
-  );
+export async function bodyDashboard(day: DayString = today()): Promise<BodyDashboard> {
+  const week = await trainingWeek(day);
+  const weekDistance = await scalar(
+      "SELECT COALESCE(SUM(distance_m), 0) AS v FROM runs WHERE date BETWEEN ? AND ?",
+      [startOfWeek(day), endOfWeek(day)],
+    );
   return {
-    todaySessions: sessionsForDay(day),
-    activeSession: activeSession(),
+    todaySessions: await sessionsForDay(day),
+    activeSession: await activeSession(),
     week,
-    load: trainingLoad(day),
-    readiness: readinessFor(day),
-    nutrition: nutritionDay(day),
-    nutritionTrend: nutritionTrend(28, day),
-    latestMeasurement: latestMeasurement(),
-    records: recentRecords(6),
-    volumeByGroup: weeklyVolumeByGroup(day),
+    load: await trainingLoad(day),
+    readiness: await readinessFor(day),
+    nutrition: await nutritionDay(day),
+    nutritionTrend: await nutritionTrend(28, day),
+    latestMeasurement: await latestMeasurement(),
+    records: await recentRecords(6),
+    volumeByGroup: await weeklyVolumeByGroup(day),
     weeklyDistanceM: weekDistance,
     sessionsThisWeek: week.reduce(
       (t, d) => t + d.sessions.filter((s) => s.status === "COMPLETED").length,

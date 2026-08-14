@@ -28,8 +28,8 @@ export default async function DecisionsPage({
   searchParams: Promise<{ quick?: string }>;
 }) {
   const params = await searchParams;
-  const decisions = listDecisions();
-  const cooling = coolingDecisions();
+  const decisions = await listDecisions();
+  const cooling = await coolingDecisions();
   const quality = decisionQuality(decisions);
 
   return (

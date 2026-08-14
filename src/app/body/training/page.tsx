@@ -41,17 +41,17 @@ export default async function TrainingPage({
   const anchor =
     params.week && /^\d{4}-\d{2}-\d{2}$/.test(params.week) ? params.week : startOfWeek(day);
 
-  const week = trainingWeek(anchor);
-  const load = trainingLoad(day);
-  const volume = weeklyVolumeByGroup(anchor);
-  const workouts = listWorkouts();
-  const sessions = recentSessions(15);
-  const live = activeSession();
+  const week = await trainingWeek(anchor);
+  const load = await trainingLoad(day);
+  const volume = await weeklyVolumeByGroup(anchor);
+  const workouts = await listWorkouts();
+  const sessions = await recentSessions(15);
+  const live = await activeSession();
 
-  const weekDistance = scalar(
-    "SELECT COALESCE(SUM(distance_m), 0) AS v FROM runs WHERE date BETWEEN ? AND ?",
-    [week[0].date, week[week.length - 1].date],
-  );
+  const weekDistance = await scalar(
+      "SELECT COALESCE(SUM(distance_m), 0) AS v FROM runs WHERE date BETWEEN ? AND ?",
+      [week[0].date, week[week.length - 1].date],
+    );
   const completed = week.reduce(
     (t, d) => t + d.sessions.filter((s) => s.status === "COMPLETED").length,
     0,

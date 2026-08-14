@@ -46,7 +46,9 @@ empty system.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `COMMAND_DB_PATH` | `data/command.db` | SQLite database location |
+| `TURSO_DATABASE_URL` | _unset_ | Hosted libSQL database. When set, it is used instead of a local file |
+| `TURSO_AUTH_TOKEN` | _unset_ | Token for the hosted database |
+| `COMMAND_DB_PATH` | `data/command.db` | Local database file, used when `TURSO_DATABASE_URL` is unset |
 | `COMMAND_TZ` | `Africa/Johannesburg` | Timezone that defines a calendar day |
 | `COMMAND_PASSWORD` | _unset_ | Locks the app. Unset is fine on localhost; **required** in production |
 
@@ -54,24 +56,42 @@ empty system.
 
 ## Deploying it
 
-COMMAND stores everything in one SQLite file, so it needs a host that keeps its
-filesystem between restarts. **It cannot run on serverless hosting.** On Vercel,
-Netlify Functions or Lambda the filesystem is read-only outside `/tmp`, `/tmp`
-is per-instance and discarded, and each cold start would silently create an
-empty database — every logged set, lead and reflection would disappear without
-an error. That is the exact failure this system is built to refuse.
+COMMAND runs on SQLite, and SQLite normally means a file on a disk. That rules
+out serverless hosting, where the filesystem is read-only and thrown away
+between requests — an app that quietly discards every write is worse than one
+that will not start.
 
-What it needs is a container with a disk. The included `Dockerfile` works on
-Render, Railway, Fly or any VPS, and `render.yaml` is a Render blueprint that
-provisions the disk and mounts it at `/data`.
+libSQL resolves it. The same SQL runs against either a local file or a hosted
+database, so the app is unchanged and the storage moves:
 
-`scripts/boot.mjs` is the entrypoint. On first boot it sees an empty database
-and creates the starting structure; on every boot after that it finds the
-database and leaves it alone, so a redeploy can never overwrite real history.
-No terminal is needed to set a hosted instance up.
+- **Local** — nothing to configure. `data/command.db`, exactly as before.
+- **Hosted** — set `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`, and the file is
+  never touched. This is what makes serverless deployment work.
 
-Render disks require a paid instance type. A free instance has no persistent
-filesystem, which puts you back in the serverless failure above.
+### On Vercel
+
+Entirely from a browser, no terminal:
+
+1. Create a database at [turso.tech](https://turso.tech) and copy its URL and token.
+2. In the Vercel project, add `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` and
+   `COMMAND_PASSWORD` as environment variables.
+3. Redeploy.
+
+`vercel.json` pins the framework to Next.js, so a project that was detected as a
+static site stops looking for a `public/` directory.
+
+Nothing needs seeding by hand. The `postbuild` step runs the seed against the
+hosted database whenever `TURSO_DATABASE_URL` is set; the seed stops the moment
+it finds an existing user, so redeploys never overwrite real history. The schema
+is applied on first connection only, so cold starts do not replay it.
+
+### On a container host
+
+The `Dockerfile` and `render.yaml` are still here for Render, Railway, Fly or a
+VPS, where a mounted disk holds the SQLite file directly and no hosted database
+is needed. `scripts/boot.mjs` seeds on first boot and leaves an existing
+database alone on every boot after. Those hosts charge for the persistent disk;
+the Vercel route above does not.
 
 ### The lock
 
@@ -156,6 +176,12 @@ exhaustively and why the rules are auditable in one place.
 **`services/` read.** They fetch rows, hand them to `domain/`, and return view
 models. No writes.
 
+**Everything below the components is async.** Storage is reached over a network
+when hosted, so `services/` and `actions/` return promises and pages await them.
+The `domain/` engines stayed synchronous and untouched — they take plain data and
+never talk to a database, which is exactly why the migration could not break
+them.
+
 **`actions/` write.** Every mutation is a server action that validates with zod,
 returns a readable `ActionResult`, recomputes the affected day's score, and
 revalidates the affected paths. Cache revalidation is guarded so a write never
@@ -163,8 +189,8 @@ fails because there is no request context (scripts, tests).
 
 ### Data
 
-SQLite via `better-sqlite3`, with the schema in `src/lib/db/schema.sql` as the
-single source of truth. It is compiled into a TypeScript constant by
+SQLite dialect via `@libsql/client`, with the schema in `src/lib/db/schema.sql`
+as the single source of truth. It is compiled into a TypeScript constant by
 `scripts/gen-schema.mjs` (run automatically before dev, build, test and seed) so
 the runtime never depends on filesystem layout. `CREATE TABLE IF NOT EXISTS`
 handles new tables; columns added to existing tables are listed in
@@ -284,7 +310,12 @@ npm test
 Every route was smoke-tested for a 200 — signed in, with redirects disabled so a
 bounce to the login page cannot be mistaken for a passing page — every page
 checked for horizontal overflow at 390px, and the live workout loop driven end
-to end in a real browser.
+to end in a real browser, against both the local file and the hosted code path.
+
+After the move to libSQL, the codebase was also swept for dropped promises: a
+call that returns a promise nobody awaits type-checks cleanly and is wrong at
+runtime (`if (asyncFn())` is always true). That sweep found and fixed a real bug
+where an untouched day scored 0 instead of `null`.
 
 The lock was verified separately: every route redirects when signed out, a wrong
 password is rejected, a forged cookie is rejected, the signed-in session reaches

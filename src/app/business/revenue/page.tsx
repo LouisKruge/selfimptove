@@ -40,12 +40,12 @@ export default async function RevenuePage({
 }) {
   const params = await searchParams;
   const day = today();
-  const business = primaryBusiness();
-  const entries = listRevenue(60);
-  const expenses = listBusinessExpenses(40);
-  const customers = listCustomers();
-  const months = monthlyRevenue(12, day);
-  const mrr = currentMrrCents();
+  const business = await primaryBusiness();
+  const entries = await listRevenue(60);
+  const expenses = await listBusinessExpenses(40);
+  const customers = await listCustomers();
+  const months = await monthlyRevenue(12, day);
+  const mrr = await currentMrrCents();
 
   const totalRevenue = entries.reduce((t, e) => t + e.amount_cents, 0);
   const churned = customers.filter((c) => c.status === "CHURNED").length;

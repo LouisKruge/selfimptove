@@ -30,10 +30,10 @@ export default async function SalesPage({
 }) {
   const params = await searchParams;
   const day = today();
-  const business = primaryBusiness();
-  const p = pipeline();
-  const leads = listLeads(params.stage ? { stage: params.stage } : {});
-  const actions = nextSalesActions(6, day);
+  const business = await primaryBusiness();
+  const p = await pipeline();
+  const leads = await listLeads(params.stage ? { stage: params.stage } : {});
+  const actions = await nextSalesActions(6, day);
 
   return (
     <div className="space-y-10">

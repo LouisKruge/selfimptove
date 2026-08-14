@@ -26,10 +26,10 @@ export default async function WorkoutDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const detail = workoutDetail(id);
+  const detail = await workoutDetail(id);
   if (!detail) notFound();
 
-  const exercises = listExercises().map((e) => ({
+  const exercises = (await listExercises()).map((e) => ({
     value: e.id,
     label: `${e.name}${e.muscle_group ? ` · ${e.muscle_group}` : ""}`,
   }));

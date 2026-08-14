@@ -27,10 +27,18 @@ export const metadata = { title: "Missions" };
 
 export default async function MissionsPage() {
   const day = today();
-  const missions = listMissions();
-  const primary = primaryMission();
-  const goals = listGoals({ status: "ACTIVE" }).map((g) => ({ value: g.id, label: g.title }));
-  const unaligned = unalignedProjects(primary?.id ?? null);
+  const missions = await listMissions();
+  const primary = await primaryMission();
+  const goals = (await listGoals({ status: "ACTIVE" })).map((g) => ({ value: g.id, label: g.title }));
+  const unaligned = await unalignedProjects(primary?.id ?? null);
+
+  // Progress is derived from milestones, tasks and KPIs, so each mission costs
+  // a query. Resolve them all up front rather than inside the render.
+  const progressByMission = new Map(
+    await Promise.all(
+      missions.map(async (m) => [m.id, await computeMissionProgress(m, day)] as const),
+    ),
+  );
 
   return (
     <div className="space-y-10">
@@ -69,7 +77,7 @@ export default async function MissionsPage() {
         ) : (
           <div className="space-y-px">
             {missions.map((m) => {
-              const progress = computeMissionProgress(m, day);
+              const progress = progressByMission.get(m.id)!;
               return (
                 <Panel key={m.id}>
                   <PanelBody>

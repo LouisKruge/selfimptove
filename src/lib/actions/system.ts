@@ -36,7 +36,7 @@ export async function openReview(
 ): Promise<ActionResult<{ id: string }>> {
   const parsed = parseWith(z.object({ kind: reviewKind }), { kind });
   if (!parsed.ok) return parsed.result;
-  const review = ensureReview(parsed.value.kind as ReviewKind, date ?? today());
+  const review = await ensureReview(parsed.value.kind as ReviewKind, date ?? today());
   refreshPaths(["/reviews"]);
   return ok({ id: review.id });
 }
@@ -46,10 +46,10 @@ export async function saveReview(form: FormData): Promise<ActionResult> {
   const parsed = parseWith(z.object({ id, complete: optionalText }), data);
   if (!parsed.ok) return parsed.result;
 
-  const review = get<{ id: string; kind: ReviewKind; answers_json: string }>(
-    "SELECT id, kind, answers_json FROM reviews WHERE id = ?",
-    [parsed.value.id],
-  );
+  const review = await get<{ id: string; kind: ReviewKind; answers_json: string }>(
+      "SELECT id, kind, answers_json FROM reviews WHERE id = ?",
+      [parsed.value.id],
+    );
   if (!review) return fail("Review not found.");
 
   const questions = REVIEW_QUESTIONS[review.kind];
@@ -58,7 +58,7 @@ export async function saveReview(form: FormData): Promise<ActionResult> {
     const value = data[`q_${q.key}`];
     if (typeof value === "string" && value.trim() !== "") answers[q.key] = value.trim();
   }
-  saveReviewAnswers(review.id, answers);
+  await saveReviewAnswers(review.id, answers);
 
   if (parsed.value.complete === "1") {
     const unanswered = questions.filter((q) => !answers[q.key]);
@@ -67,8 +67,8 @@ export async function saveReview(form: FormData): Promise<ActionResult> {
         `Answer every question before completing: ${unanswered.map((q) => q.label).join(", ")}.`,
       );
     }
-    completeReview(review.id);
-    recomputeDayScore(today());
+    await completeReview(review.id);
+    await recomputeDayScore(today());
   }
 
   refreshPaths(["/reviews"]);
@@ -78,7 +78,7 @@ export async function saveReview(form: FormData): Promise<ActionResult> {
 }
 
 export async function reopenReview(reviewId: string): Promise<ActionResult> {
-  update("reviews", reviewId, { status: "DRAFT", completed_at: null });
+  await update("reviews", reviewId, { status: "DRAFT", completed_at: null });
   refreshPaths(["/reviews"]);
   refreshPaths([`/reviews/${reviewId}`]);
   return ok();
@@ -87,7 +87,7 @@ export async function reopenReview(reviewId: string): Promise<ActionResult> {
 /* --------------------------------------------------------- NOTIFICATIONS */
 
 export async function dismissAlert(notificationId: string): Promise<ActionResult> {
-  dismissNotification(notificationId);
+  await dismissNotification(notificationId);
   refreshPaths(["/"]);
   return ok();
 }
@@ -117,14 +117,14 @@ export async function saveSettings(form: FormData): Promise<ActionResult> {
 
   // settings is keyed by `key`, so it does not go through the id-based repo.
   for (const [key, value] of writes) {
-    run(
-      `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+    await run(
+            `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-      [key, value, nowIso()],
-    );
+            [key, value, nowIso()],
+          );
   }
 
-  recomputeDayScore(today());
+  await recomputeDayScore(today());
   refreshPaths(["/settings"]);
   refreshPaths(["/"]);
   return ok();
@@ -142,7 +142,7 @@ export async function saveProfile(form: FormData): Promise<ActionResult> {
   );
   if (!parsed.ok) return parsed.result;
   const { id: userId, ...rest } = parsed.value;
-  update("users", userId, rest);
+  await update("users", userId, rest);
   refreshPaths(["/settings"]);
   refreshPaths(["/goals"]);
   return ok();
@@ -153,7 +153,7 @@ export async function saveProfile(form: FormData): Promise<ActionResult> {
 /** Recomputes stored scores across a window. Safe to run at any time. */
 export async function rebuildScores(days = 90): Promise<ActionResult<{ days: number }>> {
   const window = Math.min(400, Math.max(1, Math.round(days)));
-  for (const day of lastNDays(window)) recomputeDayScore(day);
+  for (const day of lastNDays(window)) await recomputeDayScore(day);
   refreshPaths(["/"]);
   refreshPaths(["/analytics"]);
   return ok({ days: window });
@@ -171,20 +171,20 @@ export async function quickCapture(form: FormData): Promise<ActionResult> {
   const v = parsed.value;
 
   if (v.kind === "IDEA") {
-    insert("ideas", { title: v.text, stage: "CAPTURE" });
+    await insert("ideas", { title: v.text, stage: "CAPTURE" });
     refreshPaths(["/ideas"]);
   } else if (v.kind === "TASK") {
-    insert("tasks", {
-      title: v.text,
-      pillar: "BUSINESS",
-      priority: "BACKLOG",
-      status: "TODO",
-      scheduled_date: today(),
-    });
-    recomputeDayScore(today());
+    await insert("tasks", {
+            title: v.text,
+            pillar: "BUSINESS",
+            priority: "BACKLOG",
+            status: "TODO",
+            scheduled_date: today(),
+          });
+    await recomputeDayScore(today());
     refreshPaths(["/today"]);
   } else {
-    insert("notes", { body: v.text });
+    await insert("notes", { body: v.text });
     refreshPaths(["/ideas"]);
   }
   refreshPaths(["/"]);

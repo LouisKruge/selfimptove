@@ -21,10 +21,10 @@ export const dynamic = "force-dynamic";
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const lead = getLead(id);
+  const lead = await getLead(id);
   if (!lead) notFound();
 
-  const events = leadEvents(lead.id);
+  const events = await leadEvents(lead.id);
   const expected = Math.round((lead.potential_cents * lead.probability) / 100);
 
   return (

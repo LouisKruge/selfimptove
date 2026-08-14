@@ -28,7 +28,7 @@ export default async function RunningPage({
 }) {
   const params = await searchParams;
   const day = today();
-  const o = runningOverview(day);
+  const o = await runningOverview(day);
 
   const recentWeeks = o.weeks.slice(-12);
 

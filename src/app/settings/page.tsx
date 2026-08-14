@@ -30,12 +30,12 @@ export const metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   const day = today();
-  const user = getUser();
-  const season = activeSeason(day);
-  const seasons = listSeasons();
+  const user = await getUser();
+  const season = await activeSeason(day);
+  const seasons = await listSeasons();
   const authEnabled = isAuthEnabled();
   const settings = Object.fromEntries(
-    all<{ key: string; value: string }>("SELECT key, value FROM settings").map((s) => [s.key, s.value]),
+    (await all<{ key: string; value: string }>("SELECT key, value FROM settings")).map((s) => [s.key, s.value]),
   );
 
   return (

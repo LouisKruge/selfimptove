@@ -28,7 +28,7 @@ export default async function ExerciseHistoryPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const history = exerciseHistory(id);
+  const history = await exerciseHistory(id);
   if (!history) notFound();
 
   const { exercise } = history;

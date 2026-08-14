@@ -29,17 +29,17 @@ export const dynamic = "force-dynamic";
 
 export default async function ReviewDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const review = getReview(id);
+  const review = await getReview(id);
   if (!review) notFound();
 
   const answers = reviewAnswers(review);
   const questions = REVIEW_QUESTIONS[review.kind];
   const snapshot =
-    storedSnapshot(review) ?? reviewSnapshot(review.kind, review.period_start, review.period_end);
+    storedSnapshot(review) ?? await reviewSnapshot(review.kind, review.period_start, review.period_end);
   const complete = review.status === "COMPLETE";
   const ninety =
     review.kind === "NINETY_DAY"
-      ? ninetyDayComparison(review.period_start, review.period_end)
+      ? await ninetyDayComparison(review.period_start, review.period_end)
       : null;
 
   const title =

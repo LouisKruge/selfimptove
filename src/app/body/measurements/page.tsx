@@ -28,9 +28,9 @@ export default async function MeasurementsPage({
 }) {
   const params = await searchParams;
   const day = today();
-  const rows = listMeasurements(200);
-  const latest = latestMeasurement();
-  const comparisons = compositionComparisons(day);
+  const rows = await listMeasurements(200);
+  const latest = await latestMeasurement();
+  const comparisons = await compositionComparisons(day);
 
   const weightSeries = [...rows]
     .reverse()

@@ -4,15 +4,15 @@
 
 FROM node:22-bookworm-slim
 
-# better-sqlite3 is a native addon and compiles during install.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
+  && apt-get install -y --no-install-recommends ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Dev dependencies are kept in the final image on purpose: the build needs
 # TypeScript and Tailwind, and first boot needs tsx to run the seed.
+# Set TURSO_DATABASE_URL instead of mounting a disk to use a hosted database.
 COPY package.json package-lock.json ./
 RUN npm ci
 

@@ -20,10 +20,10 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Reflection" };
 
 export default async function ReflectionPage() {
-  const notes = all<{ id: string; title: string | null; body: string; pillar: string | null; created_at: string }>(
-    "SELECT id, title, body, pillar, created_at FROM notes WHERE entity_type IS NULL ORDER BY created_at DESC LIMIT 60",
-  );
-  const reviews = listReviews().filter((r) => r.status === "COMPLETE").slice(0, 12);
+  const notes = await all<{ id: string; title: string | null; body: string; pillar: string | null; created_at: string }>(
+      "SELECT id, title, body, pillar, created_at FROM notes WHERE entity_type IS NULL ORDER BY created_at DESC LIMIT 60",
+    );
+  const reviews = (await listReviews()).filter((r) => r.status === "COMPLETE").slice(0, 12);
 
   return (
     <div className="space-y-10">

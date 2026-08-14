@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { listWorkouts, listExercises } from "@/lib/services/body";
-import { scalar } from "@/lib/db";
+import { all } from "@/lib/db";
 import {
   Badge,
   EmptyState,
@@ -16,8 +16,17 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Workout Library" };
 
 export default async function LibraryPage() {
-  const workouts = listWorkouts();
-  const exerciseCount = listExercises().length;
+  const workouts = await listWorkouts();
+  const exerciseCount = (await listExercises()).length;
+
+  // One grouped count rather than a query per workout.
+  const exerciseCounts = new Map(
+    (
+      await all<{ workout_id: string; v: number }>(
+        "SELECT workout_id, COUNT(*) AS v FROM workout_exercises GROUP BY workout_id",
+      )
+    ).map((r) => [r.workout_id, r.v]),
+  );
 
   const grouped = new Map<string, typeof workouts>();
   for (const w of workouts) {
@@ -54,10 +63,7 @@ export default async function LibraryPage() {
           <Section key={type} title={type} meta={`${list.length} ${list.length === 1 ? "workout" : "workouts"}`}>
             <div className="grid gap-px sm:grid-cols-2 lg:grid-cols-3">
               {list.map((w) => {
-                const count = scalar(
-                  "SELECT COUNT(*) AS v FROM workout_exercises WHERE workout_id = ?",
-                  [w.id],
-                );
+                const count = exerciseCounts.get(w.id) ?? 0;
                 return (
                   <Panel key={w.id} className="transition-colors hover:border-line-strong">
                     <PanelBody className="flex h-full flex-col gap-4">
