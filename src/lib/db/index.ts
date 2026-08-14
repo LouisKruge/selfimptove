@@ -1,8 +1,6 @@
 import "server-only";
 
 import { createClient, type Client, type InValue, type ResultSet } from "@libsql/client";
-import { mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
 import { SCHEMA_SQL } from "./schema.generated";
 import { applyMigrations } from "./migrations";
 
@@ -41,8 +39,12 @@ function createConnection(): Client {
     });
   }
 
-  const path = resolve(process.env.COMMAND_DB_PATH ?? "data/command.db");
-  mkdirSync(dirname(path), { recursive: true });
+  // Local file. Deliberately no filesystem calls here: passing a runtime value
+  // to fs or path makes the bundler trace the entire project into the server
+  // bundle, and this branch never runs on the hosted deployment anyway. The
+  // directory is created by whichever script creates the database — seed,
+  // populate or boot — so by the time the app opens it, it exists.
+  const path = process.env.COMMAND_DB_PATH ?? "data/command.db";
   return createClient({ url: `file:${path}`, intMode: "number" });
 }
 
