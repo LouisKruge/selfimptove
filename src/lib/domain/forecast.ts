@@ -1,4 +1,4 @@
-import type { ScheduledCashItem } from "@/lib/types";
+import type { Debt, ScheduledCashItem } from "@/lib/types";
 import { addDays, daysBetween, dayOfWeek, parseDay, type DayString } from "@/lib/core/date";
 
 /**
@@ -79,6 +79,53 @@ export function occurrences(
     if (d.getUTCDate() === effective) out.push(day);
   }
   return out;
+}
+
+/**
+ * Debts, expressed as the scheduled outflows they already are.
+ *
+ * A debt with a due day and a minimum payment is not a guess about the future
+ * — it is a payment that will leave the account on a known date for a known
+ * amount. Leaving it out of the forecast understates what is going out, which
+ * is the one direction a cash forecast must never be wrong in.
+ *
+ * Only the contractual minimum is projected. Paying more is a decision, and
+ * COMMAND does not assume decisions the operator has not made.
+ *
+ * A debt already covered by a real scheduled item is skipped, so linking one
+ * never double-counts.
+ */
+export function debtsAsScheduled(
+  debts: readonly Debt[],
+  scheduled: readonly ScheduledCashItem[],
+): ScheduledCashItem[] {
+  const alreadyScheduled = new Set(
+    scheduled.filter((s) => s.active && s.debt_id).map((s) => s.debt_id as string),
+  );
+
+  return debts
+    .filter(
+      (d) =>
+        d.status === "ACTIVE" &&
+        d.due_day !== null &&
+        d.min_payment_cents > 0 &&
+        !alreadyScheduled.has(d.id),
+    )
+    .map((d) => ({
+      id: `debt:${d.id}`,
+      name: `${d.name} — minimum payment`,
+      direction: "OUT" as const,
+      amount_cents: d.min_payment_cents,
+      cadence: "MONTHLY" as const,
+      day_of_month: d.due_day,
+      day_of_week: null,
+      next_date: null,
+      category: "Debt",
+      debt_id: d.id,
+      active: 1,
+      created_at: d.created_at,
+      updated_at: d.updated_at,
+    }));
 }
 
 export function forecastCash(opts: {

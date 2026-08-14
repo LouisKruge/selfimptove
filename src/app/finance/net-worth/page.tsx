@@ -5,6 +5,7 @@ import { deleteAsset } from "@/lib/actions/money";
 import { metricTrajectory } from "@/lib/domain/trajectory";
 import {
   BarSeries,
+  CompositionBar,
   DataRow,
   EmptyState,
   Kpi,
@@ -67,35 +68,55 @@ export default async function NetWorthPage() {
         </PanelBody>
       </Panel>
 
-      <div className="grid items-start gap-6 lg:grid-cols-2">
-        <Panel>
-          <PanelHeader title="Assets" meta={money(now.assetsCents)} />
-          <PanelBody>
-            <DataRow label="Cash" value={money(now.cashCents)} />
-            <DataRow label="Investments" value={money(now.investmentsCents)} />
-            <DataRow label="Property" value={money(now.propertyCents)} />
-            <DataRow label="Business equity" value={money(now.businessCents)} />
-            <DataRow label="Other assets" value={money(now.otherAssetsCents)} />
-          </PanelBody>
-        </Panel>
+      <Section title="Balance sheet" meta="What the number is actually made of.">
+        <div className="grid items-start gap-6 lg:grid-cols-2">
+          <Panel>
+            <PanelHeader title="Assets" meta={money(now.assetsCents)} />
+            <PanelBody>
+              <CompositionBar
+                format={money}
+                emptyLabel="No assets recorded"
+                segments={[
+                  { label: "Cash", value: now.cashCents },
+                  { label: "Investments", value: now.investmentsCents },
+                  { label: "Property", value: now.propertyCents },
+                  { label: "Business equity", value: now.businessCents },
+                  { label: "Other assets", value: now.otherAssetsCents },
+                ]}
+              />
+            </PanelBody>
+          </Panel>
 
-        <Panel>
-          <PanelHeader title="Liabilities" meta={money(now.liabilitiesCents)} />
-          <PanelBody>
-            <DataRow label="Total debt" value={money(now.liabilitiesCents)} tone={now.liabilitiesCents > 0 ? "attention" : "default"} />
-            <div className="mt-6">
-              <KpiGrid cols={2}>
-                <Kpi label="Assets" value={moneyCompact(now.assetsCents)} />
-                <Kpi
-                  label="Net worth"
-                  value={moneyCompact(now.netWorthCents)}
-                  tone={now.netWorthCents < 0 ? "critical" : "default"}
-                />
-              </KpiGrid>
-            </div>
-          </PanelBody>
-        </Panel>
-      </div>
+          <Panel>
+            <PanelHeader title="Assets against liabilities" meta={money(now.netWorthCents)} />
+            <PanelBody>
+              <CompositionBar
+                format={money}
+                emptyLabel="Nothing recorded"
+                segments={[
+                  { label: "Owned outright", value: Math.max(now.assetsCents - now.liabilitiesCents, 0) },
+                  { label: "Owed", value: now.liabilitiesCents, tone: "critical" },
+                ]}
+              />
+              <div className="hairline mt-6 pt-5">
+                <KpiGrid cols={3}>
+                  <Kpi label="Assets" value={moneyCompact(now.assetsCents)} />
+                  <Kpi
+                    label="Liabilities"
+                    value={moneyCompact(now.liabilitiesCents)}
+                    tone={now.liabilitiesCents > 0 ? "attention" : "default"}
+                  />
+                  <Kpi
+                    label="Net worth"
+                    value={moneyCompact(now.netWorthCents)}
+                    tone={now.netWorthCents < 0 ? "critical" : "default"}
+                  />
+                </KpiGrid>
+              </div>
+            </PanelBody>
+          </Panel>
+        </div>
+      </Section>
 
       <Section title="History" meta={`${snapshots.length} snapshots`}>
         {snapshots.length === 0 ? (

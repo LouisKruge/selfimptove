@@ -7,6 +7,7 @@ import { trajectory } from "@/lib/domain/trajectory";
 import {
   AlertCard,
   BarSeries,
+  CompositionBar,
   EmptyState,
   Kpi,
   LineChart,
@@ -14,6 +15,7 @@ import {
   PageHeader,
   Panel,
   PanelBody,
+  PairedBars,
   PanelHeader,
   ProgressBar,
   Section,
@@ -173,26 +175,57 @@ export default async function FinanceDashboardPage() {
         </Panel>
       </div>
 
-      <Section title="Where the money went" meta="This month, by category">
-        <Panel>
-          <PanelBody>
-            {f.categories.length === 0 ? (
-              <EmptyState compact title="No expenses recorded" description="Nothing logged this month." />
-            ) : (
-              <div className="space-y-4">
-                {f.categories.slice(0, 8).map((c) => (
-                  <ProgressBar
-                    key={c.category}
-                    value={(c.total / Math.max(...f.categories.map((x) => x.total))) * 100}
-                    label={c.category}
-                    right={`${money(c.total)} · ${c.count}`}
+      <div className="grid items-start gap-6 lg:grid-cols-2">
+        <Section title="Where the money went" meta="This month, by category">
+          <Panel>
+            <PanelBody>
+              <CompositionBar
+                format={money}
+                emptyLabel="No expenses recorded"
+                segments={f.categories.map((c) => ({ label: c.category, value: c.total }))}
+              />
+            </PanelBody>
+          </Panel>
+        </Section>
+
+        <Section title="In against out" meta="Last six months">
+          <Panel>
+            <PanelBody>
+              {f.cashMonths.length === 0 ? (
+                <EmptyState
+                  compact
+                  title="Nothing recorded"
+                  description="Log income and expenses and the shape of each month appears here."
+                />
+              ) : (
+                <>
+                  <PairedBars
+                    points={f.cashMonths.map((m) => ({
+                      label: m.month,
+                      a: m.incomeCents,
+                      b: m.expensesCents,
+                    }))}
+                    format={money}
+                    labels={["In", "Out"]}
                   />
-                ))}
-              </div>
-            )}
-          </PanelBody>
-        </Panel>
-      </Section>
+                  <div className="hairline mt-6 pt-5">
+                    <KpiGrid cols={3}>
+                      <Kpi label="In" value={money(f.income30Cents)} detail="30 days" />
+                      <Kpi label="Out" value={money(f.expenses30Cents)} detail="30 days" />
+                      <Kpi
+                        label="Surplus"
+                        value={money(f.income30Cents - f.expenses30Cents)}
+                        tone={f.income30Cents - f.expenses30Cents < 0 ? "critical" : "positive"}
+                        detail="30 days"
+                      />
+                    </KpiGrid>
+                  </div>
+                </>
+              )}
+            </PanelBody>
+          </Panel>
+        </Section>
+      </div>
     </div>
   );
 }

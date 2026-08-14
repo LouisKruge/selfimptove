@@ -150,7 +150,7 @@ export function ScheduledForm({ debts }: { debts: Array<{ value: string; label: 
           type="number"
           min="1"
           max="31"
-          hint="Monthly items"
+          hint="Monthly items. Use 31 for the last day — short months clamp back."
         />
         <SelectField label="Day of week" name="day_of_week" includeBlank options={WEEKDAYS} hint="Weekly items" />
         <TextField label="Date" name="next_date" type="date" hint="One-off items" />

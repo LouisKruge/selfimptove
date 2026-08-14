@@ -28,7 +28,7 @@ import {
 } from "@/lib/domain/scoring";
 import { trajectory, metricTrajectory } from "@/lib/domain/trajectory";
 import { analyseBalance } from "@/lib/domain/balance";
-import { forecastCash, occurrences } from "@/lib/domain/forecast";
+import { debtsAsScheduled, forecastCash, occurrences } from "@/lib/domain/forecast";
 import { analysePipeline, planToTarget, rankNextActions } from "@/lib/domain/pipeline";
 import { analyseNutritionTrend } from "@/lib/domain/nutrition";
 import { assessReadiness } from "@/lib/domain/recovery";
@@ -39,7 +39,7 @@ import { missionProgress, progressBar } from "@/lib/domain/mission";
 import { habitConsistency, promiseStats, decisionQuality } from "@/lib/domain/character";
 import { analyseIntervals, paceSecPerKm } from "@/lib/domain/running";
 import { analyseSimulation, projectRaceTime, stationProfiles } from "@/lib/domain/hyrox";
-import type { WorkoutSet, RunInterval, ScheduledCashItem, Idea } from "@/lib/types";
+import type { WorkoutSet, RunInterval, ScheduledCashItem, Debt, Idea } from "@/lib/types";
 
 /* ------------------------------------------------------------------ dates */
 
@@ -449,6 +449,57 @@ function sched(over: Partial<ScheduledCashItem>): ScheduledCashItem {
     ...over,
   };
 }
+
+function debt(over: Partial<Debt>): Debt {
+  return {
+    id: "d1",
+    name: "Card",
+    kind: "CREDIT_CARD",
+    original_cents: 100_000_00,
+    balance_cents: 50_000_00,
+    interest_rate: 19.5,
+    min_payment_cents: 3_000_00,
+    due_day: 28,
+    status: "ACTIVE",
+    created_at: "",
+    updated_at: "",
+    settled_at: null,
+    ...over,
+  } as Debt;
+}
+
+test("forecast: a debt with a due day and a minimum is a scheduled outflow", () => {
+  const derived = debtsAsScheduled([debt({})], []);
+  assert.equal(derived.length, 1);
+  assert.equal(derived[0].direction, "OUT");
+  assert.equal(derived[0].amount_cents, 3_000_00);
+  assert.equal(derived[0].day_of_month, 28);
+  assert.equal(derived[0].cadence, "MONTHLY");
+});
+
+test("forecast: a debt already covered by a scheduled item is not counted twice", () => {
+  const derived = debtsAsScheduled([debt({})], [sched({ debt_id: "d1" })]);
+  assert.equal(derived.length, 0, "the hand-entered item wins");
+});
+
+test("forecast: debts without a due day or a minimum are not projected", () => {
+  assert.equal(debtsAsScheduled([debt({ due_day: null })], []).length, 0);
+  assert.equal(debtsAsScheduled([debt({ min_payment_cents: 0 })], []).length, 0);
+  assert.equal(debtsAsScheduled([debt({ status: "SETTLED" })], []).length, 0);
+});
+
+test("forecast: debt payments reduce the projected balance", () => {
+  const items = debtsAsScheduled([debt({ due_day: 5, min_payment_cents: 2_000_00 })], []);
+  const result = forecastCash({
+    openingCents: 10_000_00,
+    items,
+    from: "2026-03-01",
+    horizonDays: 30,
+  });
+  assert.equal(result.totalOutCents, 2_000_00);
+  assert.equal(result.closingCents, 8_000_00);
+  assert.equal(result.events[0].name, "Card — minimum payment");
+});
 
 test("forecast: monthly items clamp to the last day of short months", () => {
   const days = occurrences(sched({ day_of_month: 31 }), "2026-01-01", "2026-03-31");

@@ -3,7 +3,7 @@ import "server-only";
 import { all, get, scalar } from "@/lib/db";
 import { byId } from "@/lib/db/repo";
 import { addDays, startOfMonth, today, type DayString } from "@/lib/core/date";
-import { forecastCash, type ForecastResult } from "@/lib/domain/forecast";
+import { debtsAsScheduled, forecastCash, type ForecastResult } from "@/lib/domain/forecast";
 import { metricTrajectory } from "@/lib/domain/trajectory";
 import { progressPct, round } from "@/lib/domain/stats";
 import type {
@@ -75,9 +75,13 @@ export async function listScheduled(activeOnly = true): Promise<ScheduledCashIte
 }
 
 export async function forecast(horizonDays: number, day: DayString = today()): Promise<ForecastResult> {
+  const scheduled = await listScheduled(true);
+  const debts = await listDebts();
   return forecastCash({
     openingCents: await cashOnHandCents(),
-    items: await listScheduled(true),
+    // Recorded debts are known outflows too, not just whatever was entered by
+    // hand as a scheduled item.
+    items: [...scheduled, ...debtsAsScheduled(debts, scheduled)],
     from: day,
     horizonDays,
   });
@@ -246,6 +250,42 @@ export async function netWorthNow(): Promise<NetWorthNow> {
 
 /* ------------------------------------------------------------- dashboard */
 
+export interface CashMonth {
+  month: string;
+  incomeCents: number;
+  expensesCents: number;
+  netCents: number;
+}
+
+/**
+ * Income and expenses per calendar month, oldest first.
+ *
+ * Months with nothing recorded are dropped rather than drawn as zero — an
+ * empty month means nothing was logged, which is not the same as a month in
+ * which nothing was earned or spent.
+ */
+export async function cashByMonth(months = 6, day: DayString = today()): Promise<CashMonth[]> {
+  const from = startOfMonth(addDays(startOfMonth(day), -(months - 1) * 31));
+
+  const income = await all<{ month: string; total: number }>(
+    `SELECT substr(date, 1, 7) AS month, SUM(amount_cents) AS total
+       FROM income_entries WHERE date >= ? GROUP BY month`,
+    [from],
+  );
+  const spend = await all<{ month: string; total: number }>(
+    `SELECT substr(date, 1, 7) AS month, SUM(amount_cents) AS total
+       FROM personal_expenses WHERE date >= ? GROUP BY month`,
+    [from],
+  );
+
+  const keys = [...new Set([...income.map((r) => r.month), ...spend.map((r) => r.month)])].sort();
+  return keys.map((month) => {
+    const incomeCents = income.find((r) => r.month === month)?.total ?? 0;
+    const expensesCents = spend.find((r) => r.month === month)?.total ?? 0;
+    return { month, incomeCents, expensesCents, netCents: incomeCents - expensesCents };
+  });
+}
+
 export interface FinanceDashboard {
   now: NetWorthNow;
   snapshots: NetWorthSnapshot[];
@@ -258,6 +298,7 @@ export interface FinanceDashboard {
   debt: DebtPlan;
   goals: Array<Goal & { progress: number | null }>;
   categories: Awaited<ReturnType<typeof expensesByCategory>>;
+  cashMonths: CashMonth[];
   monthIncomeCents: number;
   monthExpensesCents: number;
 }
@@ -271,6 +312,7 @@ export async function financeDashboard(day: DayString = today()): Promise<Financ
   return {
     now: await netWorthNow(),
     snapshots,
+    cashMonths: await cashByMonth(6, day),
     netWorthTrend: metricTrajectory(
       [...snapshots].reverse().map((s) => s.net_worth_cents),
       2,

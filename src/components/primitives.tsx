@@ -620,6 +620,142 @@ export function TableWrap({ children }: { children: ReactNode }) {
  * range, with the zero line drawn whenever it falls inside that range, so a
  * negative balance is unmistakable.
  */
+/**
+ * A single bar divided into its parts, with a legend that names each one.
+ *
+ * The right shape for a balance sheet or a spending breakdown: the question is
+ * always "what is this made of, and which part dominates", which a stack answers
+ * in one glance and a row of separate bars does not.
+ *
+ * Monochrome by design — segments are separated by luminance, in descending
+ * order, so the largest part is the brightest. Colour is reserved for the one
+ * thing that needs a human decision.
+ */
+export function CompositionBar({
+  segments,
+  format,
+  emptyLabel = "Nothing recorded",
+}: {
+  segments: Array<{ label: string; value: number; tone?: Tone }>;
+  format: (v: number) => string;
+  emptyLabel?: string;
+}) {
+  const present = segments.filter((s) => s.value > 0);
+  const total = present.reduce((t, s) => t + s.value, 0);
+
+  if (total <= 0) {
+    return <EmptyState compact title={emptyLabel} description="Nothing to break down yet." />;
+  }
+
+  // Brightest for the largest share, stepping down from there.
+  const shades = ["bg-ink", "bg-ink-dim", "bg-ink-faint", "bg-ink-ghost", "bg-line-strong", "bg-line"];
+  const ranked = [...present].sort((a, b) => b.value - a.value);
+
+  return (
+    <div className="min-w-0">
+      <div className="flex h-3 w-full overflow-hidden rounded-[1px]">
+        {ranked.map((s, i) => (
+          <div
+            key={s.label}
+            className={cx(
+              s.tone === "critical" ? "bg-critical" : shades[Math.min(i, shades.length - 1)],
+            )}
+            style={{ width: `${(s.value / total) * 100}%` }}
+            title={`${s.label} — ${format(s.value)}`}
+          />
+        ))}
+      </div>
+
+      <div className="mt-4 space-y-0">
+        {ranked.map((s, i) => (
+          <div
+            key={s.label}
+            className="flex items-baseline justify-between gap-4 border-b border-line-soft py-2 last:border-b-0"
+          >
+            <span className="flex min-w-0 items-center gap-2.5">
+              <span
+                className={cx(
+                  "h-2 w-2 flex-none",
+                  s.tone === "critical" ? "bg-critical" : shades[Math.min(i, shades.length - 1)],
+                )}
+              />
+              <span className="truncate text-xs text-ink-faint">{s.label}</span>
+            </span>
+            <span className="flex flex-none items-baseline gap-3">
+              <span className="numeral text-[0.6875rem] text-ink-ghost">
+                {Math.round((s.value / total) * 100)}%
+              </span>
+              <span
+                className={cx("numeral text-sm", s.tone === "critical" ? "text-critical" : "text-ink")}
+              >
+                {format(s.value)}
+              </span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Two series side by side per period — money in against money out.
+ *
+ * A single net figure hides whether a good month came from earning more or
+ * spending less, and those call for different decisions.
+ */
+export function PairedBars({
+  points,
+  format,
+  height = 72,
+  labels = ["In", "Out"],
+}: {
+  points: Array<{ label: string; a: number; b: number }>;
+  format: (v: number) => string;
+  height?: number;
+  labels?: [string, string] | string[];
+}) {
+  if (points.length === 0) {
+    return <EmptyState compact title="No data" description="Nothing has been recorded yet." />;
+  }
+  const max = Math.max(...points.flatMap((p) => [p.a, p.b]), 1);
+
+  return (
+    <div className="min-w-0">
+      <div className="flex items-end gap-1.5" style={{ height }}>
+        {points.map((p) => (
+          <div key={p.label} className="flex min-w-0 flex-1 items-end justify-center gap-[2px]">
+            <div
+              className="w-1/2 bg-ink"
+              style={{ height: `${Math.max((p.a / max) * height, p.a > 0 ? 2 : 0)}px` }}
+              title={`${p.label} — ${labels[0]} ${format(p.a)}`}
+            />
+            <div
+              className="w-1/2 bg-ink-ghost"
+              style={{ height: `${Math.max((p.b / max) * height, p.b > 0 ? 2 : 0)}px` }}
+              title={`${p.label} — ${labels[1]} ${format(p.b)}`}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 flex items-center justify-between">
+        <span className="text-[0.6875rem] text-ink-ghost">{points[0]?.label}</span>
+        <span className="flex items-center gap-3 text-[0.6875rem] text-ink-ghost">
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-2 bg-ink" />
+            {labels[0]}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-2 bg-ink-ghost" />
+            {labels[1]}
+          </span>
+        </span>
+        <span className="text-[0.6875rem] text-ink-ghost">{points[points.length - 1]?.label}</span>
+      </div>
+    </div>
+  );
+}
+
 export function LineChart({
   points,
   height = 96,
