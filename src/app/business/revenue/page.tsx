@@ -47,7 +47,12 @@ export default async function RevenuePage({
   const months = await monthlyRevenue(12, day);
   const mrr = await currentMrrCents();
 
-  const totalRevenue = entries.reduce((t, e) => t + e.amount_cents, 0);
+  // Zero entries means unrecorded, not zero earned. Only claim a figure once
+  // something has actually been logged.
+  const totalRevenue = entries.length > 0 ? entries.reduce((t, e) => t + e.amount_cents, 0) : null;
+  const thisMonth = entries.length > 0 ? (months[months.length - 1]?.revenueCents ?? 0) : null;
+  const thisMonthProfit =
+    entries.length > 0 || expenses.length > 0 ? (months[months.length - 1]?.profitCents ?? 0) : null;
   const churned = customers.filter((c) => c.status === "CHURNED").length;
 
   return (
@@ -62,11 +67,15 @@ export default async function RevenuePage({
         <PanelBody>
           <KpiGrid cols={4}>
             <Kpi label="MRR" value={mrr > 0 ? money(mrr) : "—"} detail={`${customers.filter((c) => c.status === "ACTIVE").length} active customers`} />
-            <Kpi label="Recorded revenue" value={money(totalRevenue)} detail={`${entries.length} entries`} />
+            <Kpi
+              label="Recorded revenue"
+              value={money(totalRevenue)}
+              detail={entries.length > 0 ? `${entries.length} entries` : "not recorded"}
+            />
             <Kpi
               label="This month"
-              value={money(months[months.length - 1]?.revenueCents ?? 0)}
-              detail={`profit ${money(months[months.length - 1]?.profitCents ?? 0)}`}
+              value={money(thisMonth)}
+              detail={thisMonthProfit === null ? "not recorded" : `profit ${money(thisMonthProfit)}`}
             />
             <Kpi label="Churned" value={churned || "—"} />
           </KpiGrid>

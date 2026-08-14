@@ -23,13 +23,19 @@ if (!process.env.TURSO_DATABASE_URL?.trim()) {
 
 console.log("· hosted database configured — ensuring the starting structure exists");
 
-const result = spawnSync(
-  "npx",
-  ["tsx", "--conditions=react-server", "scripts/seed.mts"],
-  { stdio: "inherit", env: process.env },
-);
-
-if (result.status !== 0) {
-  console.error("· seeding failed");
-  process.exit(1);
+/**
+ * Two steps, both idempotent:
+ *   seed      creates the base structure the very first time only
+ *   populate  reconciles the database to the operator's own configuration,
+ *             archiving anything generic and never touching logged data
+ */
+for (const script of ["scripts/seed.mts", "scripts/populate.mts"]) {
+  const result = spawnSync("npx", ["tsx", "--conditions=react-server", script], {
+    stdio: "inherit",
+    env: process.env,
+  });
+  if (result.status !== 0) {
+    console.error(`· ${script} failed`);
+    process.exit(1);
+  }
 }

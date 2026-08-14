@@ -139,11 +139,18 @@ export interface BusinessDashboard {
   business: Business | undefined;
   mrrCents: number;
   mrrTargetCents: number | null;
-  revenueThisMonthCents: number;
-  revenueLastMonthCents: number;
-  expensesThisMonthCents: number;
-  profitThisMonthCents: number;
-  revenue90Cents: number;
+  /**
+   * Null until something has actually been recorded.
+   *
+   * A sum over zero rows is zero, but "R0 earned this month" and "no revenue
+   * has ever been entered" are different claims, and only one of them is true
+   * at the start. Once any revenue exists, a month with none really is R0.
+   */
+  revenueThisMonthCents: number | null;
+  revenueLastMonthCents: number | null;
+  expensesThisMonthCents: number | null;
+  profitThisMonthCents: number | null;
+  revenue90Cents: number | null;
   customers: Customer[];
   customerCount: number;
   pipeline: Awaited<ReturnType<typeof analysePipeline>>;
@@ -160,10 +167,16 @@ export async function businessDashboard(day: DayString = today()): Promise<Busin
   const monthStart = startOfMonth(day);
   const months = await monthlyRevenue(12, day);
 
+  // Has anything ever been entered? Decides zero-versus-unknown throughout.
+  const revenueRecorded = (await scalar("SELECT COUNT(*) AS v FROM revenue_entries")) > 0;
+  const expensesRecorded = (await scalar("SELECT COUNT(*) AS v FROM business_expenses")) > 0;
+
   const lastMonthKey = months.length >= 2 ? months[months.length - 2].month : null;
-  const revenueLastMonthCents = lastMonthKey
-    ? (months.find((m) => m.month === lastMonthKey)?.revenueCents ?? 0)
-    : 0;
+  const revenueLastMonthCents = !revenueRecorded
+    ? null
+    : lastMonthKey
+      ? (months.find((m) => m.month === lastMonthKey)?.revenueCents ?? 0)
+      : 0;
 
   const pipe = await pipeline();
   const customers = await listCustomers();
@@ -180,11 +193,14 @@ export async function businessDashboard(day: DayString = today()): Promise<Busin
     business,
     mrrCents: await currentMrrCents(),
     mrrTargetCents: business?.mrr_target_cents ?? null,
-    revenueThisMonthCents: await revenueBetween(monthStart, day),
+    revenueThisMonthCents: revenueRecorded ? await revenueBetween(monthStart, day) : null,
     revenueLastMonthCents,
-    expensesThisMonthCents: await expensesBetween(monthStart, day),
-    profitThisMonthCents: await revenueBetween(monthStart, day) - await expensesBetween(monthStart, day),
-    revenue90Cents: await revenueBetween(addDays(day, -89), day),
+    expensesThisMonthCents: expensesRecorded ? await expensesBetween(monthStart, day) : null,
+    profitThisMonthCents:
+      revenueRecorded || expensesRecorded
+        ? (await revenueBetween(monthStart, day)) - (await expensesBetween(monthStart, day))
+        : null,
+    revenue90Cents: revenueRecorded ? await revenueBetween(addDays(day, -89), day) : null,
     customers,
     customerCount: activeCount,
     pipeline: pipe,

@@ -134,7 +134,9 @@ export async function briefing(day: DayString = today()): Promise<StrategistBrie
       "SELECT COUNT(*) AS v FROM lead_stage_events WHERE date BETWEEN ? AND ?",
       [addDays(day, -89), day],
     );
-  if (touches90 >= 15 && business.revenue90Cents === 0) {
+  // Null means no revenue has ever been entered, which is not the same as
+  // ninety days of activity producing nothing. Only the second is worth saying.
+  if (touches90 >= 15 && business.revenue90Cents !== null && business.revenue90Cents === 0) {
     push({
       role: "STRATEGIST",
       pillar: "BUSINESS",

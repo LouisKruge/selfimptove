@@ -70,7 +70,7 @@ export interface CommandCenter {
   business: {
     mrrCents: number;
     mrrTargetCents: number | null;
-    revenueThisMonthCents: number;
+    revenueThisMonthCents: number | null;
     openLeads: number;
     nextAction: Awaited<ReturnType<typeof nextSalesActions>>[number] | null;
   };

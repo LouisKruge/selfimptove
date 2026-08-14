@@ -15,7 +15,9 @@
     "typecheck": "node scripts/gen-schema.mjs && tsc --noEmit",
     "test": "node scripts/gen-schema.mjs && tsx --conditions=react-server --test \"tests/*.test.ts\" \"tests/*.test.mts\"",
     "demo": "node scripts/gen-schema.mjs && tsx --conditions=react-server scripts/seed.mts --reset --demo",
-    "postbuild": "node scripts/seed-if-remote.mjs"
+    "postbuild": "node scripts/seed-if-remote.mjs",
+    "populate": "node scripts/gen-schema.mjs && tsx --conditions=react-server scripts/populate.mts",
+    "setup": "npm run seed && npm run populate"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",

@@ -36,6 +36,8 @@ a letter jumps to any section.
 | `npm run seed` | Create the starting structure if the database is empty |
 | `npm run seed -- --force` | Rewrite the starting structure over an existing database |
 | `npm run reset` | Delete the database and start again |
+| `npm run populate` | Apply the operator's configuration — goals, missions, training week, nutrition, habits, ideas |
+| `npm run setup` | `seed` then `populate` — a database ready to use |
 | `npm run demo` | Reset, then generate 70 days of clearly-labelled synthetic history |
 
 `npm run demo` exists only so the interface can be evaluated with data in it.
@@ -80,10 +82,11 @@ Entirely from a browser, no terminal:
 `vercel.json` pins the framework to Next.js, so a project that was detected as a
 static site stops looking for a `public/` directory.
 
-Nothing needs seeding by hand. The `postbuild` step runs the seed against the
-hosted database whenever `TURSO_DATABASE_URL` is set; the seed stops the moment
-it finds an existing user, so redeploys never overwrite real history. The schema
-is applied on first connection only, so cold starts do not replay it.
+Nothing needs seeding by hand. Whenever `TURSO_DATABASE_URL` is set, the
+`postbuild` step runs the seed and then `populate` against the hosted database.
+The seed stops the moment it finds an existing user and `populate` only
+reconciles structure, so redeploys never overwrite real history. The schema is
+applied on first connection only, so cold starts do not replay it.
 
 ### On a container host
 
@@ -161,7 +164,7 @@ src/
     services/              Reads: DB → domain → view models
     actions/               Writes: "use server", zod-validated, score-recomputing
     nav.ts, types.ts       Shared navigation map and row types
-scripts/                   Schema codegen, seed, demo generator
+scripts/                   Schema codegen, seed, operator config, demo generator
 tests/                     Unit tests for domain, integration tests for the rest
 ```
 
@@ -327,10 +330,35 @@ over a modified one leaves it untouched.
 
 ## Starting state
 
-`npm run seed` creates structure only — the FOUNDATION season, the BUILD THE
-MACHINE 90-day mission with its eight milestones and four KPIs, a goal hierarchy
-from life vision down to one-year targets, 41 exercises, 12 workout templates,
-seven habits, five skills and a nutrition target.
+`npm run seed` creates the base structure. `npm run populate` then reconciles the
+database to the operator's own configuration in `scripts/command-data.ts`:
 
-It creates no history. Scores, trends and records begin the moment something
-real is logged.
+- the FOUNDATION season weighted 25/30/25/10/10
+- BUILD THE MACHINE as the one active primary mission, ten milestones, five KPIs
+- five pillar missions running alongside it
+- a goal hierarchy from north star through three-year to twelve-month targets,
+  including the R10k → R150k revenue milestones
+- the six-day training week — upper strength, lower strength, running engine,
+  upper hypertrophy, lower hypertrophy and power, HYROX simulation — plus two
+  baseline tests and Sunday's complete rest
+- 44 exercises, the nutrition target with its adjustment rule, seven habits,
+  thirteen skills, nine ideas in the vault, and the sales, strategy, finance,
+  discipline and review systems as reference notes
+
+`populate` is a reconciler, not a seed. It runs on every deploy: structure it
+owns is matched to the configuration, structure it does not recognise is
+**archived rather than deleted**, and anything logged — sets, runs, meals,
+measurements, leads, revenue, promises, reviews — is never touched. Running it
+three times in a row produces byte-identical counts.
+
+### What it deliberately leaves empty
+
+Strength numbers, HYROX times, body measurements, cash, debt, investments, net
+worth, revenue, MRR and customer counts are **not written**. They stay unset so
+the interface reports them as unrecorded rather than as zero, because "R0 earned
+this month" and "nothing has been entered yet" are different claims and only the
+second one is true at the start.
+
+The three figures that are recorded are the three that exist: bodyweight 81 kg,
+height 178 cm, and the 5K benchmark of 37:00 — the last stored as the starting
+value of the running goal rather than as a session that never happened.
