@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Task } from "@/lib/types";
 import { formatDayShort } from "@/lib/core/date";
 import { Badge, cx } from "../primitives";
@@ -27,15 +28,16 @@ export function TaskLine({
       <TaskToggle id={task.id} done={done} />
 
       <div className="min-w-0 flex-1">
-        <div
+        <Link
+          href={`/tasks/${task.id}`}
           className={cx(
-            "leading-snug",
+            "block leading-snug transition-colors hover:text-ink-dim",
             dominant ? "text-lg sm:text-xl" : "text-sm",
             done || cancelled ? "text-ink-faint line-through decoration-ink-ghost" : "text-ink",
           )}
         >
           {task.title}
-        </div>
+        </Link>
 
         {task.expected_outcome ? (
           <p className="mt-1.5 text-xs leading-relaxed text-ink-faint">{task.expected_outcome}</p>

@@ -143,6 +143,8 @@ export interface Task extends Timestamps {
   title: string;
   description: string | null;
   expected_outcome: string | null;
+  /** What actually happened. The counterpart to expected_outcome. */
+  result: string | null;
   priority: TaskPriority;
   scheduled_date: string | null;
   deadline: string | null;

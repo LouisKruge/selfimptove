@@ -748,3 +748,152 @@ export async function activateSeason(seasonId: string): Promise<ActionResult> {
   refresh("/settings");
   return ok();
 }
+
+/* ------------------------------------------------------------- TASK RECORD */
+
+/**
+ * Everything below is the record of what actually happened on a task, as
+ * opposed to what was planned. A task carries one `result` — the outcome in the
+ * operator's own words — and any number of working notes, which are the
+ * findings collected along the way.
+ */
+
+function refreshTask(taskId: string) {
+  refresh(`/tasks/${taskId}`, "/business/projects");
+}
+
+/** Adds a working note: what was done, what was found, what it means. */
+export async function logTaskWork(form: FormData): Promise<ActionResult> {
+  const parsed = parseWith(
+    z.object({ task_id: id, title: optionalText, body: requiredText }),
+    formObject(form),
+  );
+  if (!parsed.ok) return parsed.result;
+  const v = parsed.value;
+
+  const task = await get<{ pillar: string }>("SELECT pillar FROM tasks WHERE id = ?", [v.task_id]);
+  if (!task) return fail("Task not found.");
+
+  await insert("notes", {
+    title: v.title ?? null,
+    body: v.body,
+    pillar: task.pillar,
+    entity_type: "task",
+    entity_id: v.task_id,
+  });
+
+  refreshTask(v.task_id);
+  return ok();
+}
+
+export async function deleteTaskNote(noteId: string, taskId: string): Promise<ActionResult> {
+  await remove("notes", noteId);
+  refreshTask(taskId);
+  return ok();
+}
+
+/**
+ * Records the outcome and the time it actually took.
+ *
+ * Completing here is deliberate rather than a side effect: a task is finished
+ * when its outcome has been written down, not when a box is ticked.
+ */
+export async function recordTaskResult(form: FormData): Promise<ActionResult> {
+  const parsed = parseWith(
+    z.object({
+      task_id: id,
+      result: optionalText,
+      actual_minutes: optionalInt,
+      complete: checkbox,
+    }),
+    formObject(form),
+  );
+  if (!parsed.ok) return parsed.result;
+  const v = parsed.value;
+
+  const existing = await get<{ scheduled_date: string | null; status: string }>(
+    "SELECT scheduled_date, status FROM tasks WHERE id = ?",
+    [v.task_id],
+  );
+  if (!existing) return fail("Task not found.");
+
+  const patch: Record<string, unknown> = {
+    result: v.result ?? null,
+    actual_minutes: v.actual_minutes ?? null,
+  };
+
+  if (v.complete && existing.status !== "COMPLETE") {
+    patch.status = "COMPLETE";
+    patch.completed_at = nowIso();
+    patch.blocked_reason = null;
+  }
+
+  await update("tasks", v.task_id, patch);
+  await recomputeDayScore(existing.scheduled_date ?? today());
+  refreshTask(v.task_id);
+  return ok();
+}
+
+/** Marks a task blocked, with the reason it is blocked. */
+export async function blockTask(form: FormData): Promise<ActionResult> {
+  const parsed = parseWith(
+    z.object({ task_id: id, blocked_reason: requiredText }),
+    formObject(form),
+  );
+  if (!parsed.ok) return parsed.result;
+  const v = parsed.value;
+
+  const existing = await get<{ scheduled_date: string | null }>(
+    "SELECT scheduled_date FROM tasks WHERE id = ?",
+    [v.task_id],
+  );
+  if (!existing) return fail("Task not found.");
+
+  await update("tasks", v.task_id, {
+    status: "BLOCKED",
+    blocked_reason: v.blocked_reason,
+    completed_at: null,
+  });
+  await recomputeDayScore(existing.scheduled_date ?? today());
+  refreshTask(v.task_id);
+  return ok();
+}
+
+/** Edits the plan side of a task: dates, estimate, priority, expected outcome. */
+export async function updateTaskPlan(form: FormData): Promise<ActionResult> {
+  const parsed = parseWith(
+    z.object({
+      task_id: id,
+      expected_outcome: optionalText,
+      priority: z.enum(["MUST_WIN", "SUPPORT", "BACKLOG"]).optional(),
+      scheduled_date: optionalDay,
+      deadline: optionalDay,
+      estimated_minutes: optionalInt,
+    }),
+    formObject(form),
+  );
+  if (!parsed.ok) return parsed.result;
+  const { task_id, ...rest } = parsed.value;
+
+  const existing = await get<{ scheduled_date: string | null }>(
+    "SELECT scheduled_date FROM tasks WHERE id = ?",
+    [task_id],
+  );
+  if (!existing) return fail("Task not found.");
+
+  // One must-win per day: promoting this one demotes whatever held the slot.
+  if (rest.priority === "MUST_WIN" && rest.scheduled_date) {
+    await run(
+      `UPDATE tasks SET priority = 'SUPPORT', updated_at = ?
+        WHERE scheduled_date = ? AND priority = 'MUST_WIN' AND status <> 'CANCELLED' AND id <> ?`,
+      [nowIso(), rest.scheduled_date, task_id],
+    );
+  }
+
+  await update("tasks", task_id, rest);
+  for (const day of [existing.scheduled_date, rest.scheduled_date]) {
+    if (day) await recomputeDayScore(day);
+  }
+  refreshTask(task_id);
+  return ok();
+}

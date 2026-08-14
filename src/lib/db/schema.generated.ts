@@ -206,6 +206,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   title             TEXT NOT NULL,
   description       TEXT,
   expected_outcome  TEXT,
+  result            TEXT,                 -- what actually happened, in the operator's words
   priority          TEXT NOT NULL DEFAULT 'SUPPORT'
                       CHECK (priority IN ('MUST_WIN','SUPPORT','BACKLOG')),
   scheduled_date    TEXT,                 -- the day it is meant to be executed

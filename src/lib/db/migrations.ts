@@ -21,6 +21,7 @@ interface ColumnMigration {
 const COLUMNS: ColumnMigration[] = [
   { table: "tasks", column: "delegated_to", definition: "TEXT" },
   { table: "lead_stage_events", column: "updated_at", definition: "TEXT" },
+  { table: "tasks", column: "result", definition: "TEXT" },
 ];
 
 export async function applyMigrations(db: Client): Promise<void> {

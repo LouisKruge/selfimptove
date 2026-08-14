@@ -108,6 +108,19 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             ) : (
               openTasks.map((t) => <TaskLine key={t.id} task={t} showDate context={t.description} />)
             )}
+
+            {doneTasks.length > 0 ? (
+              <div className="hairline pt-5">
+                <Disclosure label={`${doneTasks.length} complete`}>
+                  <div className="space-y-px">
+                    {doneTasks.map((t) => (
+                      <TaskLine key={t.id} task={t} showDate context={t.description} />
+                    ))}
+                  </div>
+                </Disclosure>
+              </div>
+            ) : null}
+
             <div className="hairline pt-5">
               <Disclosure label="Add a task">
                 <TaskForm
