@@ -116,6 +116,21 @@ async function run(sql: string, params: unknown[] = []): Promise<void> {
   await db.execute({ sql, args: args(params) });
 }
 
+/**
+ * Several statements in one round trip.
+ *
+ * Against a hosted database every statement is a network call, and rebuilding
+ * the workout prescriptions alone is ninety-four of them. Batching turns the
+ * whole rebuild into one call per workout.
+ */
+async function batch(statements: Array<{ sql: string; params?: unknown[] }>): Promise<void> {
+  if (statements.length === 0) return;
+  await db.batch(
+    statements.map((s) => ({ sql: s.sql, args: args(s.params ?? []) })),
+    "write",
+  );
+}
+
 async function insert(table: string, values: Record<string, unknown>): Promise<string> {
   const id = (values.id as string) ?? uid();
   const ts = now();
@@ -365,25 +380,30 @@ for (const w of allWorkouts) {
   });
 
   // The prescription is owned by this file — rebuild it so edits here land.
-  await run("DELETE FROM workout_exercises WHERE workout_id = ?", [workoutId]);
+  // One transaction per workout: the old rows never disappear without the new
+  // ones arriving, even if the connection drops mid-way.
+  const cols = [
+    "id", "workout_id", "exercise_id", "sort_order", "target_sets", "rep_min", "rep_max",
+    "target_seconds", "target_distance_m", "target_rir_min", "target_rir_max", "rest_sec",
+    "notes", "created_at", "updated_at",
+  ];
+  const ts = now();
+  const statements: Array<{ sql: string; params?: unknown[] }> = [
+    { sql: "DELETE FROM workout_exercises WHERE workout_id = ?", params: [workoutId] },
+  ];
   for (const [i, e] of w.exercises.entries()) {
     const exerciseId = exerciseIds.get(e.name);
     if (!exerciseId) continue;
-    await insert("workout_exercises", {
-      workout_id: workoutId,
-      exercise_id: exerciseId,
-      sort_order: i,
-      target_sets: e.sets,
-      rep_min: e.repMin ?? null,
-      rep_max: e.repMax ?? null,
-      target_seconds: e.seconds ?? null,
-      target_distance_m: e.distanceM ?? null,
-      target_rir_min: e.rirMin ?? null,
-      target_rir_max: e.rirMax ?? null,
-      rest_sec: e.rest ?? null,
-      notes: e.notes ?? null,
+    statements.push({
+      sql: `INSERT INTO workout_exercises (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`,
+      params: [
+        uid(), workoutId, exerciseId, i, e.sets, e.repMin ?? null, e.repMax ?? null,
+        e.seconds ?? null, e.distanceM ?? null, e.rirMin ?? null, e.rirMax ?? null,
+        e.rest ?? null, e.notes ?? null, ts, ts,
+      ],
     });
   }
+  await batch(statements);
 }
 
 const keptWorkouts = new Set(allWorkouts.map((w) => w.name));
