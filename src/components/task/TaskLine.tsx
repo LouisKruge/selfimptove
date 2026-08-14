@@ -43,7 +43,9 @@ export function TaskLine({
 
         <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <span className="label">{task.pillar}</span>
-          {context ? <span className="text-[0.6875rem] text-ink-faint">{context}</span> : null}
+          {context ? (
+            <span className="max-w-full truncate text-[0.6875rem] text-ink-faint">{context}</span>
+          ) : null}
           {showDate && task.scheduled_date ? (
             <span className="text-[0.6875rem] text-ink-faint">
               {formatDayShort(task.scheduled_date)}

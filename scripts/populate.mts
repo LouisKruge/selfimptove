@@ -52,6 +52,7 @@ import {
   STRATEGY_NOTE,
   WORKOUTS,
 } from "./command-data";
+import { MUST_WIN_CONFLICTS, NEXUS_PROJECT, NEXUS_TASKS } from "./nexus-tasks";
 
 /* ------------------------------------------------------------- connection */
 
@@ -555,18 +556,26 @@ log(`business     R${BUSINESS.mrrTargetCents / 100 / 1000}k target · ${BUSINESS
 
 /* ---------------------------------------------------------------- projects */
 
-const projectId = await upsert("projects", "title", "COMMAND — Business Operating System", {
+const projectId = await upsert("projects", "title", NEXUS_PROJECT.title, {
   mission_id: primaryId,
   goal_id: goalIds.get("business-long") ?? null,
   business_id: businessId,
   pillar: "BUSINESS",
-  objective:
-    "Build the operating system that connects goals, missions, body, business, finance, character, growth, analytics and strategy into one loop.",
-  expected_outcome: "A system that tells me what to do, what number to hit and whether I improved.",
+  objective: NEXUS_PROJECT.objective,
+  expected_outcome: NEXUS_PROJECT.expectedOutcome,
   status: "ACTIVE",
-  next_action: "Choose the ONE market and verify the problem in the customer's words.",
-  deadline: missionEnd,
+  next_action: NEXUS_PROJECT.nextAction,
+  deadline: NEXUS_TASKS[NEXUS_TASKS.length - 1].deadline,
 });
+
+// COMMAND itself is built and running — it is no longer the business project.
+const commandProject = await one<{ id: string; status: string }>(
+  "SELECT id, status FROM projects WHERE title = ?",
+  ["COMMAND — Business Operating System"],
+);
+if (commandProject && commandProject.status === "ACTIVE") {
+  await update("projects", commandProject.id, { status: "COMPLETE", completed_at: now() });
+}
 
 // Only one primary business project may be ACTIVE.
 for (const row of await all<{ id: string; title: string }>(
@@ -576,7 +585,68 @@ for (const row of await all<{ id: string; title: string }>(
   await update("projects", row.id, { status: "PLANNED" });
   counts.archived++;
 }
-log(`projects     1 active`);
+
+// The idea this project came out of is now active, not sitting in the vault.
+const nexusIdea = await one<{ id: string }>("SELECT id FROM ideas WHERE title = ?", [
+  NEXUS_PROJECT.ideaTitle,
+]);
+if (nexusIdea) {
+  await update("ideas", nexusIdea.id, {
+    stage: "ACTIVE",
+    promoted_project_id: projectId,
+    activated_at: now(),
+  });
+}
+log(`projects     NEXUS active · COMMAND complete`);
+
+/* -------------------------------------------------------------- NEXUS plan */
+
+/**
+ * Sixty tasks across thirteen phases. Updated in place so a change to the plan
+ * lands on the next deploy, but a task already COMPLETE or CANCELLED is left
+ * exactly as the operator left it — the plan never resurrects finished work.
+ */
+let nexusCreated = 0;
+let nexusUpdated = 0;
+let nexusUntouched = 0;
+
+for (const task of NEXUS_TASKS) {
+  const existing = await one<{ id: string; status: string }>(
+    "SELECT id, status FROM tasks WHERE title = ?",
+    [task.title],
+  );
+
+  const fields = {
+    project_id: projectId,
+    mission_id: primaryId,
+    goal_id: goalIds.get("business-long") ?? null,
+    pillar: "BUSINESS",
+    description: task.phase,
+    expected_outcome: task.expected,
+    priority: task.priority,
+    scheduled_date: task.scheduled,
+    deadline: task.deadline,
+    estimated_minutes: task.minutes,
+    sort_order: task.n,
+  };
+
+  if (!existing) {
+    await insert("tasks", { ...fields, title: task.title, status: "TODO" });
+    nexusCreated++;
+  } else if (existing.status === "COMPLETE" || existing.status === "CANCELLED") {
+    nexusUntouched++;
+  } else {
+    await update("tasks", existing.id, fields);
+    nexusUpdated++;
+  }
+}
+
+log(
+  `NEXUS plan   ${NEXUS_TASKS.length} tasks · ${nexusCreated} created · ${nexusUpdated} updated · ${nexusUntouched} left alone`,
+);
+for (const c of MUST_WIN_CONFLICTS) {
+  log(`             ${c.date}: task ${String(c.demoted).padStart(2, "0")} scheduled as SUPPORT — task ${String(c.kept).padStart(2, "0")} is the day's must-win`);
+}
 
 /* ------------------------------------------------------------------- tasks */
 
