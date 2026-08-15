@@ -738,6 +738,35 @@ export const MEAL_PRESETS = [
   { name: "Oats, banana & peanut butter", slot: "BREAKFAST", calories: 620, protein_g: 20, carbs_g: 88, fat_g: 20, fiber_g: 10 },
 ];
 
+/* ------------------------------------------------------------------ salary */
+
+/**
+ * Salary. R26,000, paid on the last day of every month.
+ *
+ * Two records, because they answer different questions:
+ *
+ *   the scheduled item  is the future — it is what makes the cash forecast
+ *                       show money arriving as well as leaving
+ *   the income entry    is the past — the payment already received, without
+ *                       which "in against out" reports R0 earned, which is
+ *                       not true
+ *
+ * Day 31 means the last day of the month: the forecast clamps it back to the
+ * 28th, 29th or 30th in months that are shorter.
+ *
+ * Both are created only if absent. This is the operator's own transaction
+ * data, so once it exists the reconciler leaves it alone — editing or deleting
+ * either one in the app is final.
+ */
+export const SALARY = {
+  name: "Salary",
+  amountCents: 26_000_00,
+  dayOfMonth: 31,
+  category: "Income",
+  source: "SALARY",
+  description: "Monthly salary",
+};
+
 /* ------------------------------------------------------------------ habits */
 
 export const HABITS = [

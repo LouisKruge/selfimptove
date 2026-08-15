@@ -45,6 +45,7 @@ import {
   PROFILE,
   REVENUE_MILESTONES,
   REVIEW_NOTE,
+  SALARY,
   SALES_ACTIVITY,
   SEASON,
   SETTINGS,
@@ -179,6 +180,9 @@ async function upsert(
 }
 
 const counts = { created: 0, updated: 0, archived: 0 };
+
+/** Days that need their score recomputed once the connection is handed over. */
+const rescore = new Set<string>();
 const log = (line: string) => console.log(`  ${line}`);
 
 /* ----------------------------------------------------------------- profile */
@@ -457,6 +461,54 @@ if (!measuredToday && !anyMeasurement) {
   log(`bodyweight   ${PROFILE.bodyweightKg} kg recorded`);
 }
 
+/* ------------------------------------------------------------------ salary */
+
+/** The last calendar day of the month before `day`. */
+function previousMonthEnd(day: string): string {
+  const d = new Date(`${day}T12:00:00Z`);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 0, 12)).toISOString().slice(0, 10);
+}
+
+// Future: the forecast needs money arriving, not only leaving.
+const salaryScheduled = await one<{ id: string }>(
+  "SELECT id FROM scheduled_cash_items WHERE name = ? AND direction = 'IN'",
+  [SALARY.name],
+);
+if (!salaryScheduled) {
+  await insert("scheduled_cash_items", {
+    name: SALARY.name,
+    direction: "IN",
+    amount_cents: SALARY.amountCents,
+    cadence: "MONTHLY",
+    day_of_month: SALARY.dayOfMonth,
+    day_of_week: null,
+    next_date: null,
+    category: SALARY.category,
+    debt_id: null,
+    active: 1,
+  });
+  log(`salary       R${SALARY.amountCents / 100 / 1000}k scheduled, last day of each month`);
+}
+
+// Past: the salary already received, so "in against out" reports what was
+// actually earned rather than nothing. Created once and never touched again.
+const salaryReceived = await one<{ id: string }>(
+  "SELECT id FROM income_entries WHERE source = ? LIMIT 1",
+  [SALARY.source],
+);
+if (!salaryReceived) {
+  const paidOn = previousMonthEnd(start);
+  await insert("income_entries", {
+    date: paidOn,
+    amount_cents: SALARY.amountCents,
+    source: SALARY.source,
+    description: SALARY.description,
+    recurring: 1,
+  });
+  rescore.add(paidOn);
+  log(`             R${SALARY.amountCents / 100 / 1000}k received ${paidOn} recorded`);
+}
+
 /* ------------------------------------------------------------------ habits */
 
 for (const [i, h] of HABITS.entries()) {
@@ -700,7 +752,7 @@ log(`notes        ${NOTES.length} system documents`);
 db.close();
 if (!REMOTE_URL) process.env.COMMAND_DB_PATH = DB_PATH;
 const { recomputeDayScore } = await import("../src/lib/services/scores");
-await recomputeDayScore(start);
+for (const day of [start, ...rescore]) await recomputeDayScore(day);
 
 console.log("");
 console.log("COMMAND is configured.");

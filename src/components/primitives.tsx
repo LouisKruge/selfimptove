@@ -722,35 +722,47 @@ export function PairedBars({
 
   return (
     <div className="min-w-0">
-      <div className="flex items-end gap-1.5" style={{ height }}>
+      <div
+        className="flex items-end justify-around gap-3 border-b border-line-soft"
+        style={{ height }}
+      >
         {points.map((p) => (
-          <div key={p.label} className="flex min-w-0 flex-1 items-end justify-center gap-[2px]">
+          <div key={p.label} className="flex min-w-0 flex-1 items-end justify-center gap-[3px]">
+            {/* Capped width: with two or three months an uncapped bar becomes a
+                slab that reads as a block rather than a measurement. */}
             <div
-              className="w-1/2 bg-ink"
+              className="w-full max-w-[22px] bg-ink"
               style={{ height: `${Math.max((p.a / max) * height, p.a > 0 ? 2 : 0)}px` }}
               title={`${p.label} — ${labels[0]} ${format(p.a)}`}
             />
             <div
-              className="w-1/2 bg-ink-ghost"
+              className="w-full max-w-[22px] bg-ink-ghost"
               style={{ height: `${Math.max((p.b / max) * height, p.b > 0 ? 2 : 0)}px` }}
               title={`${p.label} — ${labels[1]} ${format(p.b)}`}
             />
           </div>
         ))}
       </div>
-      <div className="mt-2 flex items-center justify-between">
-        <span className="text-[0.6875rem] text-ink-ghost">{points[0]?.label}</span>
-        <span className="flex items-center gap-3 text-[0.6875rem] text-ink-ghost">
-          <span className="flex items-center gap-1.5">
-            <span className="h-2 w-2 bg-ink" />
-            {labels[0]}
+
+      <div className="mt-1.5 flex items-start justify-around gap-3">
+        {points.map((p) => (
+          <span
+            key={p.label}
+            className="numeral min-w-0 flex-1 truncate text-center text-[0.625rem] text-ink-ghost"
+          >
+            {p.label.slice(5)}
           </span>
-          <span className="flex items-center gap-1.5">
-            <span className="h-2 w-2 bg-ink-ghost" />
-            {labels[1]}
-          </span>
+        ))}
+      </div>
+      <div className="mt-3 flex items-center justify-center gap-4 text-[0.6875rem] text-ink-ghost">
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-2 bg-ink" />
+          {labels[0]}
         </span>
-        <span className="text-[0.6875rem] text-ink-ghost">{points[points.length - 1]?.label}</span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-2 bg-ink-ghost" />
+          {labels[1]}
+        </span>
       </div>
     </div>
   );
