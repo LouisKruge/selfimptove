@@ -534,7 +534,15 @@ describe("search", () => {
 /* ----------------------------------------------------------- attachments */
 
 describe("attachments", () => {
-  async function attachTo(taskId: string, name: string, bytes: Uint8Array, note = "") {
+  // Uint8Array<ArrayBuffer>, not a bare Uint8Array: the bare form widens to
+  // ArrayBufferLike, which File rejects because shared memory cannot back a
+  // blob.
+  async function attachTo(
+    taskId: string,
+    name: string,
+    bytes: Uint8Array<ArrayBuffer>,
+    note = "",
+  ) {
     const { uploadAttachment } = await import("@/lib/actions/attachments");
     const form = new FormData();
     form.set("entity_type", "task");
