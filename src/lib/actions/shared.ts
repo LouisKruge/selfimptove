@@ -60,7 +60,24 @@ export const blankToUndefined = z
     return trimmed === "" ? undefined : trimmed;
   });
 
-export const optionalText = blankToUndefined.pipe(z.string().max(8000).optional());
+/**
+ * Free text with no length limit.
+ *
+ * Everything the operator writes about their own life — an outcome, a set of
+ * findings, a reflection, a decision's reasoning — is written once and read
+ * many times, and there is no length at which it stops being worth keeping.
+ * A cap here only ever loses work someone had already typed.
+ *
+ * Titles are the exception below: those appear in lists and headers, where an
+ * unbounded value breaks the layout rather than the record.
+ */
+export const optionalText = blankToUndefined.pipe(z.string().optional());
+
+/** Required free text, no length limit. For bodies, not for titles. */
+export const requiredLongText = z
+  .string()
+  .transform((v) => v.trim())
+  .pipe(z.string().min(1, "Required"));
 
 export const requiredText = z
   .string()

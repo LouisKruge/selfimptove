@@ -19,6 +19,7 @@ import {
   optionalText,
   parseWith,
   randToCents,
+  requiredLongText,
   requiredText,
   z,
   type ActionResult,
@@ -765,7 +766,7 @@ function refreshTask(taskId: string) {
 /** Adds a working note: what was done, what was found, what it means. */
 export async function logTaskWork(form: FormData): Promise<ActionResult> {
   const parsed = parseWith(
-    z.object({ task_id: id, title: optionalText, body: requiredText }),
+    z.object({ task_id: id, title: optionalText, body: requiredLongText }),
     formObject(form),
   );
   if (!parsed.ok) return parsed.result;

@@ -20,6 +20,7 @@ import {
   optionalText,
   parseWith,
   randToCents,
+  requiredLongText,
   requiredText,
   z,
   type ActionResult,
@@ -295,7 +296,7 @@ export async function deleteDecisionOption(optionId: string): Promise<ActionResu
 
 export async function decide(form: FormData): Promise<ActionResult> {
   const parsed = parseWith(
-    z.object({ id, decision: requiredText, option_id: optionalText }),
+    z.object({ id, decision: requiredLongText, option_id: optionalText }),
     formObject(form),
   );
   if (!parsed.ok) return parsed.result;
@@ -327,7 +328,7 @@ export async function decide(form: FormData): Promise<ActionResult> {
 
 export async function recordDecisionOutcome(form: FormData): Promise<ActionResult> {
   const parsed = parseWith(
-    z.object({ id, outcome: requiredText, outcome_rating: optionalInt, lesson: optionalText }),
+    z.object({ id, outcome: requiredLongText, outcome_rating: optionalInt, lesson: optionalText }),
     formObject(form),
   );
   if (!parsed.ok) return parsed.result;
