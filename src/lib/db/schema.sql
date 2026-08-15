@@ -1045,6 +1045,25 @@ CREATE TABLE IF NOT EXISTS notes (
 );
 CREATE INDEX IF NOT EXISTS idx_notes_entity ON notes(entity_type, entity_id);
 
+-- Uploaded documents, stored inline.
+--
+-- The bytes live in the database rather than on a disk because the app is
+-- deployed where there is no durable filesystem. That keeps a document in the
+-- same place, and the same backup, as the record it belongs to.
+CREATE TABLE IF NOT EXISTS attachments (
+  id                TEXT PRIMARY KEY,
+  entity_type       TEXT NOT NULL,        -- 'task', 'project', 'decision', ...
+  entity_id         TEXT NOT NULL,
+  filename          TEXT NOT NULL,
+  mime_type         TEXT NOT NULL DEFAULT 'application/octet-stream',
+  size_bytes        INTEGER NOT NULL CHECK (size_bytes >= 0),
+  content           BLOB NOT NULL,
+  note              TEXT,
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_attachments_entity ON attachments(entity_type, entity_id);
+
 CREATE TABLE IF NOT EXISTS notifications (
   id                TEXT PRIMARY KEY,
   key               TEXT NOT NULL,        -- dedupe key, e.g. 'weekly-review:2026-W33'

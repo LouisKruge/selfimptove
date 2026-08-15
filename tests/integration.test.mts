@@ -530,3 +530,98 @@ describe("search", () => {
     assert.ok(results.some((r) => r.type === "Exercise" && r.title === "Barbell Bench Press"));
   });
 });
+
+/* ----------------------------------------------------------- attachments */
+
+describe("attachments", () => {
+  async function attachTo(taskId: string, name: string, bytes: Uint8Array, note = "") {
+    const { uploadAttachment } = await import("@/lib/actions/attachments");
+    const form = new FormData();
+    form.set("entity_type", "task");
+    form.set("entity_id", taskId);
+    form.set("note", note);
+    form.set("file", new File([bytes], name, { type: "application/pdf" }));
+    return uploadAttachment(form);
+  }
+
+  async function aTask(): Promise<string> {
+    const { createTask } = await import("@/lib/actions/plan");
+    const form = new FormData();
+    form.set("title", "Task that carries documents");
+    form.set("pillar", "BUSINESS");
+    form.set("scheduled_date", DAY);
+    const created = await createTask(form);
+    assert.equal(created.ok, true);
+    if (!created.ok) throw new Error("could not create the task");
+    return created.data.id;
+  }
+
+  test("a document survives the round trip byte for byte", async () => {
+    const { attachmentContent, listAttachments } = await import("@/lib/services/attachments");
+
+    // Every byte value, so any encoding step that mangles high bytes or treats
+    // 0x00 as a terminator shows up here rather than in front of the operator.
+    const payload = new Uint8Array(256 * 40);
+    for (let i = 0; i < payload.length; i++) payload[i] = i % 256;
+
+    const taskId = await aTask();
+    assert.equal((await attachTo(taskId, "proposal.pdf", payload, "Signed")).ok, true);
+
+    const listed = await listAttachments("task", taskId);
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].filename, "proposal.pdf");
+    assert.equal(listed[0].size_bytes, payload.length);
+    assert.equal(listed[0].note, "Signed");
+    // Listing must never drag the bytes along with it.
+    assert.equal("content" in listed[0], false);
+
+    const file = await attachmentContent(listed[0].id);
+    assert.ok(file);
+    assert.equal(file.mimeType, "application/pdf");
+    assert.deepEqual(Array.from(file.bytes), Array.from(payload));
+  });
+
+  test("documents stay with their own record", async () => {
+    const { listAttachments } = await import("@/lib/services/attachments");
+    const mine = await aTask();
+    const yours = await aTask();
+    assert.equal((await attachTo(mine, "mine.pdf", new Uint8Array([1, 2, 3]))).ok, true);
+
+    assert.equal((await listAttachments("task", mine)).length, 1);
+    assert.equal((await listAttachments("task", yours)).length, 0);
+  });
+
+  test("oversized and empty uploads are refused", async () => {
+    const { MAX_ATTACHMENT_BYTES } = await import("@/lib/core/files");
+    const taskId = await aTask();
+
+    const tooBig = await attachTo(taskId, "huge.pdf", new Uint8Array(MAX_ATTACHMENT_BYTES + 1));
+    assert.equal(tooBig.ok, false);
+    if (!tooBig.ok) assert.match(tooBig.error, /limit is/);
+
+    const empty = await attachTo(taskId, "empty.pdf", new Uint8Array(0));
+    assert.equal(empty.ok, false);
+  });
+
+  test("a document cannot be attached to an unknown kind of record", async () => {
+    const { uploadAttachment } = await import("@/lib/actions/attachments");
+    const form = new FormData();
+    form.set("entity_type", "users");
+    form.set("entity_id", "whatever");
+    form.set("file", new File([new Uint8Array([1])], "x.pdf"));
+    assert.equal((await uploadAttachment(form)).ok, false);
+  });
+
+  test("deleting a document removes the bytes too", async () => {
+    const { deleteAttachment } = await import("@/lib/actions/attachments");
+    const { attachmentContent, listAttachments } = await import("@/lib/services/attachments");
+
+    const taskId = await aTask();
+    await attachTo(taskId, "temp.pdf", new Uint8Array([9, 9, 9]));
+    const [doc] = await listAttachments("task", taskId);
+
+    assert.equal((await deleteAttachment(doc.id, "task", taskId)).ok, true);
+    assert.equal((await listAttachments("task", taskId)).length, 0);
+    assert.equal(await attachmentContent(doc.id), undefined);
+  });
+});

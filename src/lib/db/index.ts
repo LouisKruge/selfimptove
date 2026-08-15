@@ -53,22 +53,51 @@ function createConnection(): Client {
  * process. The promise itself is cached, so concurrent first requests all wait
  * on the same setup rather than racing to create the same tables.
  */
+/**
+ * A cheap fingerprint of the schema.
+ *
+ * Applying the whole schema costs a large round trip, and on serverless that
+ * would be paid on every cold start. Checking for one known table was enough to
+ * skip it — until the schema gained a table that an existing database had never
+ * seen, which that check would have missed forever. The fingerprint changes
+ * whenever schema.sql does, so new tables and new columns both land.
+ */
+function schemaFingerprint(): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < SCHEMA_SQL.length; i++) {
+    h ^= SCHEMA_SQL.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return `${SCHEMA_SQL.length.toString(36)}.${h.toString(36)}`;
+}
+
 async function connect(): Promise<Client> {
   const client = createConnection();
   await client.execute("PRAGMA foreign_keys = ON");
 
-  // Applying the whole schema costs a large round trip, and on serverless that
-  // would be paid on every cold start. Fifty-six CREATE TABLE IF NOT EXISTS
-  // statements against a database that already has them do nothing, so check
-  // first and only pay when there is something to create.
-  const provisioned = await client.execute(
-    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'users'",
-  );
-  if (provisioned.rows.length === 0) await client.executeMultiple(SCHEMA_SQL);
+  const fingerprint = schemaFingerprint();
 
-  // Migrations still run every time: an existing database needs them after a
-  // deploy that adds a column, and they are two cheap queries each.
-  await applyMigrations(client);
+  let applied: string | null = null;
+  try {
+    const row = await client.execute(
+      "SELECT value FROM settings WHERE key = 'schema_fingerprint'",
+    );
+    applied = row.rows.length > 0 ? String(row.rows[0][0]) : null;
+  } catch {
+    // No settings table yet — this database has never been provisioned.
+    applied = null;
+  }
+
+  if (applied !== fingerprint) {
+    await client.executeMultiple(SCHEMA_SQL);
+    await applyMigrations(client);
+    await client.execute({
+      sql: `INSERT INTO settings (key, value, updated_at) VALUES ('schema_fingerprint', ?, ?)
+              ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      args: [fingerprint, new Date().toISOString()],
+    });
+  }
+
   return client;
 }
 

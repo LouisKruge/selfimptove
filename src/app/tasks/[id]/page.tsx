@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { formatDay, formatDayShort, relativeDays, today } from "@/lib/core/date";
 import { taskDetail, taskNeighbours } from "@/lib/services/tasks";
+import { listAttachments } from "@/lib/services/attachments";
 import {
   Badge,
   DataRow,
@@ -23,6 +24,7 @@ import {
   ResultForm,
   StatusButtons,
 } from "@/components/task/TaskRecord";
+import { DocumentList, UploadDocument } from "@/components/task/Documents";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +57,7 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
 
   const { task, project, mission, goal, log, varianceMinutes } = detail;
   const { previous, next } = await taskNeighbours(task);
+  const documents = await listAttachments("task", task.id);
   const day = today();
   const done = task.status === "COMPLETE";
 
@@ -122,6 +125,22 @@ export default async function TaskPage({ params }: { params: Promise<{ id: strin
                 Completed {formatDay(task.completed_at.slice(0, 10))}.
               </p>
             ) : null}
+          </PanelBody>
+        </Panel>
+      </Section>
+
+      {/* -------------------------------------------------------- documents */}
+
+      <Section
+        title="Documents"
+        meta={`${documents.length} ${documents.length === 1 ? "file" : "files"}`}
+      >
+        <Panel>
+          <PanelBody className="space-y-6">
+            <UploadDocument entityType="task" entityId={task.id} />
+            <div className="hairline pt-5">
+              <DocumentList documents={documents} entityType="task" entityId={task.id} />
+            </div>
           </PanelBody>
         </Panel>
       </Section>

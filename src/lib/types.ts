@@ -788,6 +788,16 @@ export interface Note extends Timestamps {
   entity_id: string | null;
 }
 
+export interface Attachment extends Timestamps {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  note: string | null;
+}
+
 export interface Notification extends Timestamps {
   id: string;
   key: string;
